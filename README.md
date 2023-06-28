@@ -1,4 +1,4 @@
-### Hi there 👋 I'm Alex 
+### Hi there! 👋  I'm Alex 
 ### About Me 🧔:
 
 • Ex-Razor USA Marketing Data Analyst 🛴
