@@ -10,5 +10,3 @@
 • Passionate problem solver 🧠 
 
 • Active Human 🏀 🎸 
-
-• NYC Resident 🗽
