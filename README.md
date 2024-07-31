@@ -1,6 +1,8 @@
 ### Hi there! 👋  I'm Alex 
 ### About Me 🧔:
 
+• Canon USA Market Research & Data Analyst 📷
+
 • Ex-Razor USA Marketing Data Analyst 🛴
 
 • Fullstack Academy - Data Analytics Bootcamp Graduate 🎓
