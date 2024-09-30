@@ -1,7 +1,7 @@
 ### Hi there! 👋  I'm Alex 
 ### About Me 🧔:
 
-• Canon USA Market Research & Data Analyst 📷
+• Ex-Canon USA Market Research & Data Analyst 📷
 
 • Ex-Razor USA Marketing Data Analyst 🛴
 
