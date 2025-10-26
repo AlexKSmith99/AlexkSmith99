@@ -2,46 +2,47 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
+  TouchableOpacity,
   TextInput,
+  Alert,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
-import DraggableFlatList from 'react-native-draggable-flatlist';
-import { Ionicons } from '@expo/vector-icons';
-import { teamBoardService } from '../../services/teamBoardService';
-import { useAuth } from '../../contexts/AuthContext';
-import { BoardTask } from '../../types';
+import { getOrCreateBoard, getTasks, createTask, updateTask, deleteTask, Task } from '../../services/teamBoardService';
 
-export default function TeamBoardScreen({ route, navigation }: any) {
-  const { pursuitId } = route.params;
-  const { user } = useAuth();
-  const [board, setBoard] = useState<any>(null);
-  const [tasks, setTasks] = useState<BoardTask[]>([]);
+interface TeamBoardScreenProps {
+  pursuitId: string;
+  onBack: () => void;
+}
+
+export default function TeamBoardScreen({ pursuitId, onBack }: TeamBoardScreenProps) {
+  const [boardId, setBoardId] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<'todo' | 'in_progress' | 'done'>('todo');
+  const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
 
   useEffect(() => {
     loadBoard();
   }, []);
 
   const loadBoard = async () => {
-    try {
-      const boardData = await teamBoardService.getOrCreateBoard(pursuitId);
-      setBoard(boardData);
-
-      const tasksData = await teamBoardService.getTasks(boardData.id);
-      setTasks(tasksData);
-    } catch (error) {
-      console.error('Error loading board:', error);
-    } finally {
-      setLoading(false);
+    setLoading(true);
+    const board = await getOrCreateBoard(pursuitId);
+    if (board) {
+      setBoardId(board.id);
+      await loadTasks(board.id);
     }
+    setLoading(false);
+  };
+
+  const loadTasks = async (bId: string) => {
+    const fetchedTasks = await getTasks(bId);
+    setTasks(fetchedTasks);
   };
 
   const handleAddTask = async () => {
@@ -50,175 +51,190 @@ export default function TeamBoardScreen({ route, navigation }: any) {
       return;
     }
 
-    try {
-      await teamBoardService.createTask({
-        board_id: board.id,
-        title: newTaskTitle,
-        description: newTaskDescription,
-        status: selectedStatus,
-        priority: 'medium',
-        order_index: tasks.filter(t => t.status === selectedStatus).length,
-      });
+    if (!boardId) return;
 
+    const task = await createTask(
+      boardId,
+      newTaskTitle,
+      newTaskDescription,
+      undefined,
+      newTaskPriority
+    );
+
+    if (task) {
+      setTasks([...tasks, task]);
       setNewTaskTitle('');
       setNewTaskDescription('');
-      setShowAddModal(false);
-      loadBoard();
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
+      setNewTaskPriority('medium');
+      setShowAddTask(false);
     }
   };
 
-  const handleUpdateTaskStatus = async (taskId: string, newStatus: BoardTask['status']) => {
-    try {
-      await teamBoardService.updateTask(taskId, { status: newStatus });
-      loadBoard();
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
+  const handleMoveTask = async (taskId: string, newStatus: 'todo' | 'in_progress' | 'done') => {
+    const updatedTask = await updateTask(taskId, { status: newStatus });
+    if (updatedTask && boardId) {
+      await loadTasks(boardId);
     }
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    Alert.alert('Delete Task', 'Are you sure you want to delete this task?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await teamBoardService.deleteTask(taskId);
-            loadBoard();
-          } catch (error: any) {
-            Alert.alert('Error', error.message);
-          }
+    Alert.alert(
+      'Delete Task',
+      'Are you sure you want to delete this task?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await deleteTask(taskId);
+            if (success && boardId) {
+              await loadTasks(boardId);
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
-  const renderTask = (task: BoardTask) => (
-    <View style={styles.taskCard}>
-      <View style={styles.taskHeader}>
-        <Text style={styles.taskTitle}>{task.title}</Text>
-        <TouchableOpacity onPress={() => handleDeleteTask(task.id)}>
-          <Ionicons name="trash-outline" size={20} color="#ef4444" />
-        </TouchableOpacity>
-      </View>
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return '#ef4444';
+      case 'medium': return '#f59e0b';
+      case 'low': return '#10b981';
+      default: return '#6b7280';
+    }
+  };
 
-      {task.description && (
-        <Text style={styles.taskDescription}>{task.description}</Text>
-      )}
+  const renderTask = (task: Task) => {
+    const canMoveLeft = task.status === 'in_progress' || task.status === 'done';
+    const canMoveRight = task.status === 'todo' || task.status === 'in_progress';
 
-      <View style={styles.taskFooter}>
-        <View style={[styles.priorityBadge, {
-          backgroundColor: task.priority === 'high' ? '#ef4444' : task.priority === 'medium' ? '#f59e0b' : '#10b981'
-        }]}>
-          <Text style={styles.priorityText}>{task.priority}</Text>
+    return (
+      <View key={task.id} style={styles.taskCard}>
+        <View style={styles.taskHeader}>
+          <Text style={styles.taskTitle}>{task.title}</Text>
+          <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(task.priority) }]}>
+            <Text style={styles.priorityText}>{task.priority.toUpperCase()}</Text>
+          </View>
         </View>
+        
+        {task.description && (
+          <Text style={styles.taskDescription}>{task.description}</Text>
+        )}
 
-        {task.assigned_user && (
-          <Text style={styles.assignedText}>
-            Assigned to: {task.assigned_user.email?.split('@')[0]}
-          </Text>
-        )}
-      </View>
+        <View style={styles.taskActions}>
+          {canMoveLeft && (
+            <TouchableOpacity
+              style={styles.moveButton}
+              onPress={() => {
+                const newStatus = task.status === 'done' ? 'in_progress' : 'todo';
+                handleMoveTask(task.id, newStatus);
+              }}
+            >
+              <Text style={styles.moveButtonText}>← Move Left</Text>
+            </TouchableOpacity>
+          )}
+          
+          {canMoveRight && (
+            <TouchableOpacity
+              style={styles.moveButton}
+              onPress={() => {
+                const newStatus = task.status === 'todo' ? 'in_progress' : 'done';
+                handleMoveTask(task.id, newStatus);
+              }}
+            >
+              <Text style={styles.moveButtonText}>Move Right →</Text>
+            </TouchableOpacity>
+          )}
 
-      <View style={styles.statusButtons}>
-        {task.status !== 'todo' && (
           <TouchableOpacity
-            style={[styles.statusButton, styles.todoButton]}
-            onPress={() => handleUpdateTaskStatus(task.id, 'todo')}
+            style={styles.deleteButton}
+            onPress={() => handleDeleteTask(task.id)}
           >
-            <Text style={styles.statusButtonText}>To Do</Text>
+            <Text style={styles.deleteButtonText}>🗑️</Text>
           </TouchableOpacity>
-        )}
-        {task.status !== 'in_progress' && (
-          <TouchableOpacity
-            style={[styles.statusButton, styles.inProgressButton]}
-            onPress={() => handleUpdateTaskStatus(task.id, 'in_progress')}
-          >
-            <Text style={styles.statusButtonText}>In Progress</Text>
-          </TouchableOpacity>
-        )}
-        {task.status !== 'done' && (
-          <TouchableOpacity
-            style={[styles.statusButton, styles.doneButton]}
-            onPress={() => handleUpdateTaskStatus(task.id, 'done')}
-          >
-            <Text style={styles.statusButtonText}>Done</Text>
-          </TouchableOpacity>
-        )}
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const todoTasks = tasks.filter(t => t.status === 'todo');
   const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
   const doneTasks = tasks.filter(t => t.status === 'done');
 
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Team Board</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setShowAddModal(true)}
-        >
-          <Ionicons name="add-circle" size={28} color="#0ea5e9" />
+        <TouchableOpacity onPress={() => setShowAddTask(true)} style={styles.addButton}>
+          <Text style={styles.addButtonText}>+ Add Task</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView horizontal style={styles.boardContainer}>
+      {/* Kanban Board */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.boardContainer}>
         {/* To Do Column */}
         <View style={styles.column}>
           <View style={styles.columnHeader}>
-            <Text style={styles.columnTitle}>To Do ({todoTasks.length})</Text>
+            <Text style={styles.columnTitle}>📋 To Do</Text>
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{todoTasks.length}</Text>
+            </View>
           </View>
-          <ScrollView style={styles.columnContent}>
-            {todoTasks.map(task => renderTask(task))}
+          <ScrollView style={styles.columnScroll}>
+            {todoTasks.map(renderTask)}
           </ScrollView>
         </View>
 
         {/* In Progress Column */}
         <View style={styles.column}>
-          <View style={[styles.columnHeader, { backgroundColor: '#fef3c7' }]}>
-            <Text style={styles.columnTitle}>In Progress ({inProgressTasks.length})</Text>
+          <View style={[styles.columnHeader, { backgroundColor: '#dbeafe' }]}>
+            <Text style={styles.columnTitle}>🔄 In Progress</Text>
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{inProgressTasks.length}</Text>
+            </View>
           </View>
-          <ScrollView style={styles.columnContent}>
-            {inProgressTasks.map(task => renderTask(task))}
+          <ScrollView style={styles.columnScroll}>
+            {inProgressTasks.map(renderTask)}
           </ScrollView>
         </View>
 
         {/* Done Column */}
         <View style={styles.column}>
           <View style={[styles.columnHeader, { backgroundColor: '#d1fae5' }]}>
-            <Text style={styles.columnTitle}>Done ({doneTasks.length})</Text>
+            <Text style={styles.columnTitle}>✅ Done</Text>
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{doneTasks.length}</Text>
+            </View>
           </View>
-          <ScrollView style={styles.columnContent}>
-            {doneTasks.map(task => renderTask(task))}
+          <ScrollView style={styles.columnScroll}>
+            {doneTasks.map(renderTask)}
           </ScrollView>
         </View>
       </ScrollView>
 
       {/* Add Task Modal */}
-      <Modal
-        visible={showAddModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowAddModal(false)}
-      >
-        <View style={styles.modalOverlay}>
+      <Modal visible={showAddTask} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add New Task</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <Ionicons name="close" size={24} color="#333" />
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.modalTitle}>Create New Task</Text>
 
             <TextInput
               style={styles.input}
-              placeholder="Task title"
+              placeholder="Task Title *"
               value={newTaskTitle}
               onChangeText={setNewTaskTitle}
             />
@@ -232,55 +248,45 @@ export default function TeamBoardScreen({ route, navigation }: any) {
               numberOfLines={4}
             />
 
-            <Text style={styles.label}>Status</Text>
-            <View style={styles.statusSelector}>
-              <TouchableOpacity
-                style={[
-                  styles.statusOption,
-                  selectedStatus === 'todo' && styles.statusOptionSelected,
-                ]}
-                onPress={() => setSelectedStatus('todo')}
-              >
-                <Text style={[
-                  styles.statusOptionText,
-                  selectedStatus === 'todo' && styles.statusOptionTextSelected,
-                ]}>
-                  To Do
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.statusOption,
-                  selectedStatus === 'in_progress' && styles.statusOptionSelected,
-                ]}
-                onPress={() => setSelectedStatus('in_progress')}
-              >
-                <Text style={[
-                  styles.statusOptionText,
-                  selectedStatus === 'in_progress' && styles.statusOptionTextSelected,
-                ]}>
-                  In Progress
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.statusOption,
-                  selectedStatus === 'done' && styles.statusOptionSelected,
-                ]}
-                onPress={() => setSelectedStatus('done')}
-              >
-                <Text style={[
-                  styles.statusOptionText,
-                  selectedStatus === 'done' && styles.statusOptionTextSelected,
-                ]}>
-                  Done
-                </Text>
-              </TouchableOpacity>
+            <Text style={styles.label}>Priority</Text>
+            <View style={styles.priorityButtons}>
+              {(['low', 'medium', 'high'] as const).map((priority) => (
+                <TouchableOpacity
+                  key={priority}
+                  style={[
+                    styles.priorityButton,
+                    newTaskPriority === priority && styles.priorityButtonActive,
+                    { borderColor: getPriorityColor(priority) }
+                  ]}
+                  onPress={() => setNewTaskPriority(priority)}
+                >
+                  <Text style={[
+                    styles.priorityButtonText,
+                    newTaskPriority === priority && { color: getPriorityColor(priority) }
+                  ]}>
+                    {priority.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            <TouchableOpacity style={styles.createButton} onPress={handleAddTask}>
-              <Text style={styles.createButtonText}>Create Task</Text>
-            </TouchableOpacity>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowAddTask(false);
+                  setNewTaskTitle('');
+                  setNewTaskDescription('');
+                  setNewTaskPriority('medium');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.createButton} onPress={handleAddTask}>
+                <Text style={styles.createButtonText}>Create Task</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -291,196 +297,224 @@ export default function TeamBoardScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f3f4f6',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#e5e7eb',
+  },
+  backButton: {
+    padding: 8,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: '#3b82f6',
+    fontWeight: '600',
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#1f2937',
   },
   addButton: {
-    padding: 4,
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  addButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
   boardContainer: {
     flex: 1,
   },
   column: {
     width: 300,
-    marginHorizontal: 10,
-    marginVertical: 10,
+    marginHorizontal: 8,
+    marginVertical: 16,
   },
   columnHeader: {
-    backgroundColor: '#e0f2fe',
+    backgroundColor: '#f3f4f6',
     padding: 12,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   columnTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#1f2937',
   },
-  columnContent: {
+  countBadge: {
     backgroundColor: '#fff',
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    padding: 8,
-    minHeight: 400,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  countText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#6b7280',
+  },
+  columnScroll: {
+    flex: 1,
   },
   taskCard: {
-    backgroundColor: '#fafafa',
-    borderRadius: 8,
+    backgroundColor: '#fff',
     padding: 12,
-    marginBottom: 10,
+    borderRadius: 8,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: '#e5e7eb',
   },
   taskHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
+    justifyContent: 'space-between',
     marginBottom: 8,
   },
   taskTitle: {
-    flex: 1,
     fontSize: 15,
     fontWeight: '600',
-    color: '#333',
-  },
-  taskDescription: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 8,
-  },
-  taskFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
+    color: '#1f2937',
+    flex: 1,
+    marginRight: 8,
   },
   priorityBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    marginRight: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
   },
   priorityText: {
     color: '#fff',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 'bold',
   },
-  assignedText: {
-    fontSize: 11,
-    color: '#999',
+  taskDescription: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 12,
   },
-  statusButtons: {
+  taskActions: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     flexWrap: 'wrap',
-    gap: 6,
   },
-  statusButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+  moveButton: {
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#3b82f6',
   },
-  todoButton: {
-    backgroundColor: '#e0f2fe',
-  },
-  inProgressButton: {
-    backgroundColor: '#fef3c7',
-  },
-  doneButton: {
-    backgroundColor: '#d1fae5',
-  },
-  statusButtonText: {
-    fontSize: 11,
+  moveButtonText: {
+    color: '#3b82f6',
+    fontSize: 12,
     fontWeight: '600',
-    color: '#333',
   },
-  modalOverlay: {
+  deleteButton: {
+    padding: 6,
+  },
+  deleteButtonText: {
+    fontSize: 18,
+  },
+  modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    minHeight: 400,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 500,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    color: '#1f2937',
+    marginBottom: 20,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#d1d5db',
     borderRadius: 8,
     padding: 12,
-    fontSize: 14,
+    fontSize: 16,
     marginBottom: 16,
-    backgroundColor: '#fafafa',
+    backgroundColor: '#fff',
   },
   textArea: {
     height: 100,
     textAlignVertical: 'top',
   },
-  statusSelector: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    gap: 8,
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4b5563',
+    marginBottom: 8,
   },
-  statusOption: {
+  priorityButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 24,
+  },
+  priorityButton: {
     flex: 1,
-    padding: 12,
+    paddingVertical: 10,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    borderWidth: 2,
     alignItems: 'center',
   },
-  statusOptionSelected: {
-    backgroundColor: '#0ea5e9',
-    borderColor: '#0ea5e9',
+  priorityButtonActive: {
+    backgroundColor: '#f9fafb',
   },
-  statusOptionText: {
-    fontSize: 13,
-    color: '#666',
+  priorityButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
   },
-  statusOptionTextSelected: {
-    color: '#fff',
-    fontWeight: 'bold',
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6b7280',
   },
   createButton: {
-    backgroundColor: '#0ea5e9',
-    borderRadius: 12,
-    padding: 16,
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#3b82f6',
     alignItems: 'center',
   },
   createButtonText: {
-    color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: '#fff',
   },
 });

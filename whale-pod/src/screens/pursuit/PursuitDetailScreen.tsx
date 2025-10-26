@@ -51,6 +51,10 @@ export default function PursuitDetailScreen({ route, navigation }: any) {
     navigation.navigate('TeamDetail', { pursuitId });
   };
 
+  const handleViewTeamBoard = () => {
+    navigation.navigate('TeamBoard', { pursuitId });
+  };
+
   const handleDelistPursuit = async () => {
     Alert.alert(
       'Delist Pursuit',
@@ -255,14 +259,22 @@ export default function PursuitDetailScreen({ route, navigation }: any) {
             <TouchableOpacity style={styles.primaryButton} onPress={handleViewTeam}>
               <Text style={styles.primaryButtonText}>Manage Team</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.teamBoardButton} onPress={handleViewTeamBoard}>
+              <Text style={styles.teamBoardButtonText}>📋 Team Board</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.dangerButton} onPress={handleDelistPursuit}>
               <Text style={styles.dangerButtonText}>Delist Pursuit</Text>
             </TouchableOpacity>
           </>
         ) : isMember ? (
-          <TouchableOpacity style={styles.primaryButton} onPress={handleViewTeam}>
-            <Text style={styles.primaryButtonText}>View Team Page</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity style={styles.primaryButton} onPress={handleViewTeam}>
+              <Text style={styles.primaryButtonText}>View Team Page</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.teamBoardButton} onPress={handleViewTeamBoard}>
+              <Text style={styles.teamBoardButtonText}>📋 Team Board</Text>
+            </TouchableOpacity>
+          </>
         ) : (
           <TouchableOpacity style={styles.primaryButton} onPress={handleApply}>
             <Text style={styles.primaryButtonText}>Apply to Join</Text>
@@ -447,6 +459,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   primaryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  teamBoardButton: {
+    backgroundColor: '#8b5cf6',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  teamBoardButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
