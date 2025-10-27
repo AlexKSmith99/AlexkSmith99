@@ -41,7 +41,7 @@ export default function EditProfileScreen({ navigation }: any) {
 
       // Read the file as base64
       const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: 'base64',
       });
 
       // Convert base64 to ArrayBuffer
