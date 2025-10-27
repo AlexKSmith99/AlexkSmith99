@@ -14,7 +14,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabaseUrl } from '../../config/supabase';
 
 export default function EditProfileScreen({ navigation }: any) {
   const { user, profile, updateProfile } = useAuth();
@@ -37,33 +37,34 @@ export default function EditProfileScreen({ navigation }: any) {
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // Fetch the image as a blob
-      const response = await fetch(uri);
-      const blob = await response.blob();
+      // Create form data
+      const formData = new FormData();
+      formData.append('file', {
+        uri: uri,
+        type: `image/${fileExt}`,
+        name: fileName,
+      } as any);
 
-      // Convert blob to ArrayBuffer
-      const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (reader.result instanceof ArrayBuffer) {
-            resolve(reader.result);
-          } else {
-            reject(new Error('Failed to read blob as ArrayBuffer'));
-          }
-        };
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(blob);
-      });
+      // Get Supabase upload URL and token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No session');
 
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('profile-pictures')
-        .upload(filePath, arrayBuffer, {
-          contentType: `image/${fileExt}`,
-          upsert: true,
-        });
+      // Upload using fetch with FormData
+      const uploadResponse = await fetch(
+        `${supabase.supabaseUrl}/storage/v1/object/profile-pictures/${filePath}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: formData,
+        }
+      );
 
-      if (error) throw error;
+      if (!uploadResponse.ok) {
+        const error = await uploadResponse.json();
+        throw new Error(error.message || 'Upload failed');
+      }
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
@@ -71,7 +72,7 @@ export default function EditProfileScreen({ navigation }: any) {
         .getPublicUrl(filePath);
 
       return publicUrl;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading image:', error);
       throw error;
     }
