@@ -12,8 +12,6 @@ import {
   Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
-import { decode } from 'base64-arraybuffer';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -39,13 +37,23 @@ export default function EditProfileScreen({ navigation }: any) {
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // Read the file as base64 - expo-file-system v19+ uses string literals
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: 'base64' as any,
-      });
+      // Fetch the image as a blob
+      const response = await fetch(uri);
+      const blob = await response.blob();
 
-      // Convert base64 to ArrayBuffer
-      const arrayBuffer = decode(base64);
+      // Convert blob to ArrayBuffer
+      const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (reader.result instanceof ArrayBuffer) {
+            resolve(reader.result);
+          } else {
+            reject(new Error('Failed to read blob as ArrayBuffer'));
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(blob);
+      });
 
       // Upload to Supabase Storage
       const { data, error } = await supabase.storage
