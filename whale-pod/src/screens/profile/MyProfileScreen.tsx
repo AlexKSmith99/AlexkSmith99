@@ -39,7 +39,9 @@ export default function MyProfileScreen({ navigation }: any) {
             />
           ) : (
             <View style={styles.avatarPlaceholder}>
-              <Ionicons name="person" size={48} color="#fff" />
+              <Text style={styles.avatarText}>
+                {profile?.name ? profile.name.charAt(0).toUpperCase() : '?'}
+              </Text>
             </View>
           )}
           <TouchableOpacity
@@ -50,8 +52,17 @@ export default function MyProfileScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.name}>{user?.email?.split('@')[0]}</Text>
+        <Text style={styles.name}>{profile?.name || 'Name not set'}</Text>
         <Text style={styles.email}>{user?.email}</Text>
+
+        {!profile?.name && (
+          <View style={styles.warningBox}>
+            <Ionicons name="warning-outline" size={20} color="#f59e0b" />
+            <Text style={styles.warningText}>
+              Please add your name to complete your profile
+            </Text>
+          </View>
+        )}
 
         {profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
       </View>
@@ -178,6 +189,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#0ea5e9',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 40,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  warningText: {
+    fontSize: 13,
+    color: '#92400e',
+    marginLeft: 8,
+    flex: 1,
   },
   editButton: {
     position: 'absolute',

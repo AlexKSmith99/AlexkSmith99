@@ -8,15 +8,21 @@ import {
   ScrollView,
   Alert,
   Image,
+  ActionSheetIOS,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 export default function EditProfileScreen({ navigation }: any) {
-  const { profile, updateProfile } = useAuth();
+  const { user, profile, updateProfile } = useAuth();
   const [loading, setLoading] = useState(false);
 
+  const [name, setName] = useState(profile?.name || '');
   const [bio, setBio] = useState(profile?.bio || '');
   const [age, setAge] = useState(profile?.age?.toString() || '');
   const [gender, setGender] = useState(profile?.gender || '');
@@ -27,12 +33,96 @@ export default function EditProfileScreen({ navigation }: any) {
   const [portfolio, setPortfolio] = useState(profile?.portfolio_website || '');
   const [profilePicture, setProfilePicture] = useState(profile?.profile_picture || '');
 
+  const uploadImage = async (uri: string) => {
+    try {
+      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      // Read the file as base64
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Convert base64 to ArrayBuffer
+      const arrayBuffer = decode(base64);
+
+      // Upload to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('profile-pictures')
+        .upload(filePath, arrayBuffer, {
+          contentType: `image/${fileExt}`,
+          upsert: true,
+        });
+
+      if (error) throw error;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('profile-pictures')
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      throw error;
+    }
+  };
+
+  const handleImageChoice = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          cancelButtonIndex: 0,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === 1) {
+            await takePhoto();
+          } else if (buttonIndex === 2) {
+            await pickImage();
+          }
+        }
+      );
+    } else {
+      Alert.alert('Add Photo', 'Choose an option', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Take Photo', onPress: takePhoto },
+        { text: 'Choose from Library', onPress: pickImage },
+      ]);
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Camera permission is required');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setProfilePicture(result.assets[0].uri);
+    }
+  };
+
   const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Photo library permission is required');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 1,
+      quality: 0.8,
     });
 
     if (!result.canceled) {
@@ -41,9 +131,29 @@ export default function EditProfileScreen({ navigation }: any) {
   };
 
   const handleSave = async () => {
+    if (!name.trim()) {
+      Alert.alert('Name Required', 'Please enter your name');
+      return;
+    }
+
     setLoading(true);
     try {
+      let uploadedImageUrl = profile?.profile_picture;
+
+      // If profile picture changed and it's a local URI, upload it
+      if (profilePicture && profilePicture !== profile?.profile_picture &&
+          (profilePicture.startsWith('file://') || profilePicture.startsWith('ph://'))) {
+        try {
+          uploadedImageUrl = await uploadImage(profilePicture);
+        } catch (uploadError) {
+          Alert.alert('Error', 'Failed to upload photo. Please try again.');
+          setLoading(false);
+          return;
+        }
+      }
+
       await updateProfile({
+        name: name.trim(),
         bio,
         age: age ? parseInt(age) : undefined,
         gender,
@@ -52,7 +162,7 @@ export default function EditProfileScreen({ navigation }: any) {
         instagram,
         github,
         portfolio_website: portfolio,
-        profile_picture: profilePicture,
+        profile_picture: uploadedImageUrl,
       });
 
       Alert.alert('Success', 'Profile updated successfully!', [
@@ -71,7 +181,7 @@ export default function EditProfileScreen({ navigation }: any) {
         <Text style={styles.title}>Edit Profile</Text>
 
         <View style={styles.imageSection}>
-          <TouchableOpacity onPress={pickImage}>
+          <TouchableOpacity onPress={handleImageChoice}>
             {profilePicture ? (
               <Image source={{ uri: profilePicture }} style={styles.avatar} />
             ) : (
@@ -88,6 +198,15 @@ export default function EditProfileScreen({ navigation }: any) {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Basic Information</Text>
+
+          <Text style={styles.label}>Name *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Your name"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+          />
 
           <Text style={styles.label}>Bio</Text>
           <TextInput

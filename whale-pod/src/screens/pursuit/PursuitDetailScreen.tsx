@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { pursuitService } from '../../services/pursuitService';
+import { supabase } from '../../lib/supabase';
 import { Pursuit } from '../../types';
 
 export default function PursuitDetailScreen({ route, navigation }: any) {
@@ -20,6 +21,7 @@ export default function PursuitDetailScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [isCreator, setIsCreator] = useState(false);
   const [isMember, setIsMember] = useState(false);
+  const [creatorProfile, setCreatorProfile] = useState<any>(null);
 
   useEffect(() => {
     loadPursuit();
@@ -31,11 +33,32 @@ export default function PursuitDetailScreen({ route, navigation }: any) {
       setPursuit(data);
       setIsCreator(data.creator_id === user?.id);
       setIsMember(data.members?.some((m) => m.user_id === user?.id) || false);
+
+      // Load creator profile
+      if (data.creator_id) {
+        loadCreatorProfile(data.creator_id);
+      }
     } catch (error) {
       console.error('Error loading pursuit:', error);
       Alert.alert('Error', 'Failed to load pursuit details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCreatorProfile = async (creatorId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('name, profile_picture, email')
+        .eq('id', creatorId)
+        .single();
+
+      if (!error && data) {
+        setCreatorProfile(data);
+      }
+    } catch (error) {
+      console.error('Error loading creator profile:', error);
     }
   };
 
@@ -199,18 +222,27 @@ export default function PursuitDetailScreen({ route, navigation }: any) {
         </View>
       )}
 
-      {pursuit.creator && (
+      {creatorProfile && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Created By</Text>
           <TouchableOpacity
             style={styles.creatorRow}
             onPress={() => navigation.navigate('UserProfile', { userId: pursuit.creator_id })}
           >
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={24} color="#fff" />
-            </View>
+            {creatorProfile.profile_picture ? (
+              <Image
+                source={{ uri: creatorProfile.profile_picture }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {creatorProfile.name?.charAt(0).toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
             <Text style={styles.creatorName}>
-              {pursuit.creator.email?.split('@')[0]}
+              {creatorProfile.name || creatorProfile.email?.split('@')[0] || 'Unknown'}
             </Text>
             <Ionicons name="chevron-forward" size={20} color="#999" />
           </TouchableOpacity>
@@ -402,6 +434,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   creatorName: {
     flex: 1,

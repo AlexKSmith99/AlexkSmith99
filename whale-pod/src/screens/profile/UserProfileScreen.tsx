@@ -59,7 +59,7 @@ export default function UserProfileScreen({ route, navigation }: any) {
   const handleMessage = () => {
     navigation.navigate('Chat', {
       userId,
-      userName: profile?.email?.split('@')[0] || 'User',
+      userName: profile?.name || profile?.email?.split('@')[0] || 'User',
     });
   };
 
@@ -70,12 +70,18 @@ export default function UserProfileScreen({ route, navigation }: any) {
           <Image source={{ uri: profile.profile_picture }} style={styles.avatar} />
         ) : (
           <View style={styles.avatarPlaceholder}>
-            <Ionicons name="person" size={48} color="#fff" />
+            <Text style={styles.avatarText}>
+              {profile?.name?.charAt(0).toUpperCase() || '?'}
+            </Text>
           </View>
         )}
 
-        <Text style={styles.name}>{profile?.email?.split('@')[0]}</Text>
-        <Text style={styles.email}>{profile?.email}</Text>
+        <Text style={styles.name}>
+          {profile?.name || 'Name not set'}
+        </Text>
+        {profile?.email && (
+          <Text style={styles.email}>{profile.email}</Text>
+        )}
 
         {profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
 
@@ -144,6 +150,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  avatarText: {
+    fontSize: 40,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   name: {
     fontSize: 24,
