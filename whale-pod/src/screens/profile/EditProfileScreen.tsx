@@ -39,9 +39,9 @@ export default function EditProfileScreen({ navigation }: any) {
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // Read the file as base64
+      // Read the file as base64 - expo-file-system v19+ uses string literals
       const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: 'base64',
+        encoding: 'base64' as any,
       });
 
       // Convert base64 to ArrayBuffer
@@ -119,7 +119,7 @@ export default function EditProfileScreen({ navigation }: any) {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
