@@ -20,9 +20,15 @@ export default function UserProfileScreen({ route, navigation }: any) {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
+    // Redirect to own profile if viewing yourself
+    if (user && userId === user.id) {
+      navigation.replace('MyProfile');
+      return;
+    }
+
     loadProfile();
     checkConnection();
-  }, []);
+  }, [userId, user]);
 
   const loadProfile = async () => {
     try {

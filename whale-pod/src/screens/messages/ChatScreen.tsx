@@ -112,6 +112,19 @@ export default function ChatScreen({ route, navigation }: any) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}
     >
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.headerUserInfo}
+          onPress={() => navigation.navigate('UserProfile', { userId })}
+        >
+          <Text style={styles.headerUserName}>{userName}</Text>
+        </TouchableOpacity>
+        <View style={{ width: 24 }} />
+      </View>
+
       <FlatList
         data={messages}
         keyExtractor={(item) => item.id}
@@ -140,6 +153,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 15,
+    paddingTop: 50,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerUserInfo: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerUserName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
   },
   messagesList: {
     padding: 15,
