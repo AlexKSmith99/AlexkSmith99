@@ -5,15 +5,25 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { messageService } from '../../services/messageService';
+import { supabase } from '../../config/supabase';
 import { Message } from '../../types';
+
+interface ConversationWithProfile extends Message {
+  partnerProfile?: {
+    name?: string;
+    profile_picture?: string;
+    email?: string;
+  };
+}
 
 export default function MessagesScreen({ navigation }: any) {
   const { user } = useAuth();
-  const [conversations, setConversations] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<ConversationWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,7 +34,29 @@ export default function MessagesScreen({ navigation }: any) {
     try {
       if (user) {
         const data = await messageService.getConversations(user.id);
-        setConversations(data);
+
+        // Fetch profile data for each conversation partner
+        const conversationsWithProfiles = await Promise.all(
+          data.map(async (conversation) => {
+            const partnerId = conversation.sender_id === user.id
+              ? conversation.recipient_id
+              : conversation.sender_id;
+
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('name, profile_picture, email')
+              .eq('id', partnerId)
+              .single();
+
+            return {
+              ...conversation,
+              partnerProfile: profileData,
+              partnerId,
+            };
+          })
+        );
+
+        setConversations(conversationsWithProfiles);
       }
     } catch (error) {
       console.error('Error loading conversations:', error);
@@ -33,8 +65,8 @@ export default function MessagesScreen({ navigation }: any) {
     }
   };
 
-  const renderConversation = ({ item }: { item: Message }) => {
-    const partnerId = item.sender_id === user?.id ? item.recipient_id : item.sender_id;
+  const renderConversation = ({ item }: { item: ConversationWithProfile }) => {
+    const partnerId = (item as any).partnerId || (item.sender_id === user?.id ? item.recipient_id : item.sender_id);
 
     return (
       <TouchableOpacity
@@ -42,16 +74,26 @@ export default function MessagesScreen({ navigation }: any) {
         onPress={() =>
           navigation.navigate('Chat', {
             userId: partnerId,
-            userName: item.sender?.email?.split('@')[0] || 'User',
+            userName: item.partnerProfile?.name || item.partnerProfile?.email?.split('@')[0] || 'User',
           })
         }
       >
-        <View style={styles.avatar}>
-          <Ionicons name="person" size={24} color="#fff" />
-        </View>
+        {item.partnerProfile?.profile_picture ? (
+          <Image
+            source={{ uri: item.partnerProfile.profile_picture }}
+            style={styles.avatar}
+          />
+        ) : (
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {item.partnerProfile?.name?.charAt(0).toUpperCase() ||
+               item.partnerProfile?.email?.charAt(0).toUpperCase() || '?'}
+            </Text>
+          </View>
+        )}
         <View style={styles.conversationInfo}>
           <Text style={styles.userName}>
-            {item.sender?.email?.split('@')[0] || 'User'}
+            {item.partnerProfile?.name || item.partnerProfile?.email?.split('@')[0] || 'User'}
           </Text>
           <Text style={styles.lastMessage} numberOfLines={1}>
             {item.content}
@@ -128,6 +170,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   conversationInfo: {
     flex: 1,

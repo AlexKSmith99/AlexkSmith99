@@ -148,7 +148,6 @@ export default function ConnectionsScreen({ navigation }: any) {
                     <Text style={styles.connectionName}>
                       {connection.profile?.name || connection.profile?.email?.split('@')[0] || 'Unknown'}
                     </Text>
-                    <Text style={styles.connectionEmail}>{connection.profile?.email}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#999" />
                 </TouchableOpacity>
@@ -190,7 +189,6 @@ export default function ConnectionsScreen({ navigation }: any) {
                             <Text style={styles.requestName}>
                               {request.profile?.name || request.profile?.email?.split('@')[0] || 'Unknown'}
                             </Text>
-                            <Text style={styles.requestEmail}>{request.profile?.email}</Text>
                           </View>
                         </TouchableOpacity>
                         <View style={styles.requestActions}>

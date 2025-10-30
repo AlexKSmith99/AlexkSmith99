@@ -8,10 +8,12 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { messageService } from '../../services/messageService';
+import { supabase } from '../../config/supabase';
 import { Message } from '../../types';
 
 export default function ChatScreen({ route, navigation }: any) {
@@ -20,8 +22,10 @@ export default function ChatScreen({ route, navigation }: any) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [otherUserProfile, setOtherUserProfile] = useState<any>(null);
 
   useEffect(() => {
+    loadUserProfile();
     loadMessages();
     // Subscribe to new messages
     const unsubscribe = messageService.subscribeToMessages(
@@ -35,6 +39,22 @@ export default function ChatScreen({ route, navigation }: any) {
 
     return () => unsubscribe();
   }, []);
+
+  const loadUserProfile = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('name, profile_picture, email')
+        .eq('id', userId)
+        .single();
+
+      if (!error && data) {
+        setOtherUserProfile(data);
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
 
   const loadMessages = async () => {
     try {
@@ -76,6 +96,23 @@ export default function ChatScreen({ route, navigation }: any) {
           isMyMessage ? styles.myMessageContainer : styles.theirMessageContainer,
         ]}
       >
+        {!isMyMessage && (
+          <TouchableOpacity onPress={() => navigation.navigate('UserProfile', { userId })}>
+            {otherUserProfile?.profile_picture ? (
+              <Image
+                source={{ uri: otherUserProfile.profile_picture }}
+                style={styles.messageAvatar}
+              />
+            ) : (
+              <View style={styles.messageAvatar}>
+                <Text style={styles.messageAvatarText}>
+                  {otherUserProfile?.name?.charAt(0).toUpperCase() ||
+                   otherUserProfile?.email?.charAt(0).toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
         <View
           style={[
             styles.messageBubble,
@@ -120,7 +157,22 @@ export default function ChatScreen({ route, navigation }: any) {
           style={styles.headerUserInfo}
           onPress={() => navigation.navigate('UserProfile', { userId })}
         >
-          <Text style={styles.headerUserName}>{userName}</Text>
+          {otherUserProfile?.profile_picture ? (
+            <Image
+              source={{ uri: otherUserProfile.profile_picture }}
+              style={styles.headerAvatar}
+            />
+          ) : (
+            <View style={styles.headerAvatar}>
+              <Text style={styles.headerAvatarText}>
+                {otherUserProfile?.name?.charAt(0).toUpperCase() ||
+                 otherUserProfile?.email?.charAt(0).toUpperCase() || '?'}
+              </Text>
+            </View>
+          )}
+          <Text style={styles.headerUserName}>
+            {otherUserProfile?.name || otherUserProfile?.email?.split('@')[0] || 'User'}
+          </Text>
         </TouchableOpacity>
         <View style={{ width: 24 }} />
       </View>
@@ -169,7 +221,23 @@ const styles = StyleSheet.create({
   },
   headerUserInfo: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  headerAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#0ea5e9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerAvatarText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   headerUserName: {
     fontSize: 18,
@@ -181,6 +249,22 @@ const styles = StyleSheet.create({
   },
   messageContainer: {
     marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  messageAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#0ea5e9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messageAvatarText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   myMessageContainer: {
     alignItems: 'flex-end',
