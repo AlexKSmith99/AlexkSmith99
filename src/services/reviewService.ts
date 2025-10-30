@@ -1,50 +1,121 @@
 import { supabase } from '../config/supabase';
-import { Review } from '../types';
+
+export interface Review {
+  id: string;
+  reviewer_id: string;
+  reviewee_id: string;
+  pursuit_id: string;
+  work_ethic: number;
+  flexibility: number;
+  quality_of_work: number;
+  punctuality: number;
+  leadership: number;
+  reliability: number;
+  easy_to_work_with: number;
+  articulation: number;
+  charisma: number;
+  niceness: number;
+  creativity: number;
+  technical_skills: number;
+  comment?: string;
+  created_at: string;
+  reviewer?: {
+    name?: string;
+    profile_picture?: string;
+  };
+  pursuit?: {
+    title: string;
+  };
+}
 
 export const reviewService = {
-  // Create a review
-  createReview: async (reviewData: Partial<Review>) => {
-    const { data, error } = await supabase
-      .from('reviews')
-      .insert([reviewData])
-      .select()
-      .single();
+  async submitReview(
+    reviewerId: string,
+    revieweeId: string,
+    pursuitId: string,
+    ratings: {
+      work_ethic: number;
+      flexibility: number;
+      quality_of_work: number;
+      punctuality: number;
+      leadership: number;
+      reliability: number;
+      easy_to_work_with: number;
+      articulation: number;
+      charisma: number;
+      niceness: number;
+      creativity: number;
+      technical_skills: number;
+      comment?: string;
+    }
+  ): Promise<void> {
+    const { error } = await supabase.from('reviews').insert({
+      reviewer_id: reviewerId,
+      reviewee_id: revieweeId,
+      pursuit_id: pursuitId,
+      ...ratings,
+    });
 
     if (error) throw error;
-    return data;
   },
 
-  // Get reviews for a user
-  getUserReviews: async (userId: string) => {
+  async getReviewsForUser(userId: string): Promise<Review[]> {
     const { data, error } = await supabase
       .from('reviews')
       .select(`
         *,
-        reviewer:profiles!reviewer_id(*),
-        pursuit:pursuits(*)
+        reviewer:profiles!reviewer_id(name, profile_picture),
+        pursuit:pursuits(title)
       `)
       .eq('reviewee_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data as Review[];
+    return data || [];
   },
 
-  // Get average ratings for a user
-  getAverageRatings: async (userId: string) => {
+  async hasReviewed(reviewerId: string, revieweeId: string, pursuitId: string): Promise<boolean> {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('id')
+      .eq('reviewer_id', reviewerId)
+      .eq('reviewee_id', revieweeId)
+      .eq('pursuit_id', pursuitId)
+      .single();
+
+    return !error && !!data;
+  },
+
+  async getAverageRatings(userId: string): Promise<{
+    [key: string]: number;
+    overall: number;
+    count: number;
+  }> {
     const { data, error } = await supabase
       .from('reviews')
       .select('*')
       .eq('reviewee_id', userId);
 
-    if (error) throw error;
-
-    if (!data || data.length === 0) {
-      return null;
+    if (error || !data || data.length === 0) {
+      return {
+        work_ethic: 0,
+        flexibility: 0,
+        quality_of_work: 0,
+        punctuality: 0,
+        leadership: 0,
+        reliability: 0,
+        easy_to_work_with: 0,
+        articulation: 0,
+        charisma: 0,
+        niceness: 0,
+        creativity: 0,
+        technical_skills: 0,
+        overall: 0,
+        count: 0,
+      };
     }
 
-    const reviews = data as Review[];
-    const metrics = [
+    const categories = [
       'work_ethic',
       'flexibility',
       'quality_of_work',
@@ -59,48 +130,18 @@ export const reviewService = {
       'technical_skills',
     ];
 
-    const averages: any = {};
-    metrics.forEach((metric) => {
-      const sum = reviews.reduce((acc, review) => acc + (review as any)[metric], 0);
-      averages[metric] = sum / reviews.length;
+    const averages: any = { count: data.length };
+    let totalSum = 0;
+
+    categories.forEach((category) => {
+      const sum = data.reduce((acc, review) => acc + (review[category] || 0), 0);
+      const avg = sum / data.length;
+      averages[category] = Math.round(avg * 10) / 10;
+      totalSum += avg;
     });
 
-    averages.overall = Object.values(averages).reduce((a: any, b: any) => a + b, 0) / metrics.length;
-    averages.total_reviews = reviews.length;
+    averages.overall = Math.round((totalSum / categories.length) * 10) / 10;
 
     return averages;
-  },
-
-  // Check if user can review another user
-  canReview: async (reviewerId: string, revieweeId: string, pursuitId: string) => {
-    // Check if both users were in the same pursuit
-    const { data: reviewerMember } = await supabase
-      .from('team_members')
-      .select('*')
-      .eq('pursuit_id', pursuitId)
-      .eq('user_id', reviewerId)
-      .single();
-
-    const { data: revieweeMember } = await supabase
-      .from('team_members')
-      .select('*')
-      .eq('pursuit_id', pursuitId)
-      .eq('user_id', revieweeId)
-      .single();
-
-    if (!reviewerMember || !revieweeMember) {
-      return false;
-    }
-
-    // Check if review already exists
-    const { data: existingReview } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('reviewer_id', reviewerId)
-      .eq('reviewee_id', revieweeId)
-      .eq('pursuit_id', pursuitId)
-      .single();
-
-    return !existingReview;
   },
 };

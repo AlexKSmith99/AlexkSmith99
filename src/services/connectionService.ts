@@ -1,5 +1,4 @@
 import { supabase } from '../config/supabase';
-import { Connection } from '../types';
 
 export const connectionService = {
   // Send connection request
@@ -33,8 +32,8 @@ export const connectionService = {
     return data;
   },
 
-  // Decline/Delete connection
-  deleteConnection: async (connectionId: string) => {
+  // Reject/Delete connection
+  rejectConnection: async (connectionId: string) => {
     const { error } = await supabase
       .from('connections')
       .delete()
@@ -43,8 +42,8 @@ export const connectionService = {
     if (error) throw error;
   },
 
-  // Get user connections
-  getConnections: async (userId: string) => {
+  // Get user connections with profile data
+  getMyConnections: async (userId: string) => {
     const { data, error } = await supabase
       .from('connections')
       .select('*')
@@ -52,10 +51,24 @@ export const connectionService = {
       .eq('status', 'accepted');
 
     if (error) throw error;
-    return data as Connection[];
+
+    // Manually fetch profile data for each connection
+    const connections = await Promise.all(
+      (data || []).map(async (conn) => {
+        const otherUserId = conn.user_id_1 === userId ? conn.user_id_2 : conn.user_id_1;
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('name, profile_picture, email')
+          .eq('id', otherUserId)
+          .single();
+        return { ...conn, profile: profileData, otherUserId };
+      })
+    );
+
+    return connections;
   },
 
-  // Get pending connection requests
+  // Get pending connection requests with profile data
   getPendingRequests: async (userId: string) => {
     const { data, error } = await supabase
       .from('connections')
@@ -64,7 +77,45 @@ export const connectionService = {
       .eq('status', 'pending');
 
     if (error) throw error;
-    return data as Connection[];
+
+    // Manually fetch profile data for each request
+    const requests = await Promise.all(
+      (data || []).map(async (req) => {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('name, profile_picture, email')
+          .eq('id', req.user_id_1)
+          .single();
+        return { ...req, profile: profileData };
+      })
+    );
+
+    return requests;
+  },
+
+  // Get sent connection requests with profile data
+  getSentRequests: async (userId: string) => {
+    const { data, error } = await supabase
+      .from('connections')
+      .select('*')
+      .eq('user_id_1', userId)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+
+    // Manually fetch profile data for each request
+    const requests = await Promise.all(
+      (data || []).map(async (req) => {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('name, profile_picture, email')
+          .eq('id', req.user_id_2)
+          .single();
+        return { ...req, profile: profileData };
+      })
+    );
+
+    return requests;
   },
 
   // Check if users are connected
@@ -72,10 +123,9 @@ export const connectionService = {
     const { data, error } = await supabase
       .from('connections')
       .select('*')
-      .or(`user_id_1.eq.${userId1},user_id_2.eq.${userId2}`)
-      .or(`user_id_1.eq.${userId2},user_id_2.eq.${userId1}`)
+      .or(`and(user_id_1.eq.${userId1},user_id_2.eq.${userId2}),and(user_id_1.eq.${userId2},user_id_2.eq.${userId1})`)
       .eq('status', 'accepted')
-      .single();
+      .maybeSingle();
 
     return !!data && !error;
   },
