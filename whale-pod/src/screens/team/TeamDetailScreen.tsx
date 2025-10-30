@@ -5,6 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { pursuitService } from '../../services/pursuitService';
@@ -84,12 +85,22 @@ export default function TeamDetailScreen({ route, navigation }: any) {
               navigation.navigate('UserProfile', { userId: member.user_id })
             }
           >
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={24} color="#fff" />
-            </View>
+            {member.user?.profile_picture ? (
+              <Image
+                source={{ uri: member.user.profile_picture }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {member.user?.name?.charAt(0).toUpperCase() ||
+                   member.user?.email?.charAt(0).toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
             <View style={styles.memberInfo}>
               <Text style={styles.memberName}>
-                {member.user?.email?.split('@')[0]}
+                {member.user?.name || member.user?.email?.split('@')[0] || 'Unknown'}
               </Text>
               {member.role && (
                 <Text style={styles.memberRole}>{member.role}</Text>
@@ -100,6 +111,7 @@ export default function TeamDetailScreen({ route, navigation }: any) {
                 <Text style={styles.adminText}>Admin</Text>
               </View>
             )}
+            <Ionicons name="chevron-forward" size={20} color="#999" />
           </TouchableOpacity>
         ))}
       </View>
@@ -163,6 +175,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   memberInfo: {
     flex: 1,

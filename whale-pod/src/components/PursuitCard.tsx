@@ -1,14 +1,15 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Pursuit } from '../types';
 
 interface PursuitCardProps {
   pursuit: Pursuit;
   onPress: () => void;
+  onCreatorPress?: () => void;
 }
 
-export default function PursuitCard({ pursuit, onPress }: PursuitCardProps) {
+export default function PursuitCard({ pursuit, onPress, onCreatorPress }: PursuitCardProps) {
   const statusColor = pursuit.status === 'active' ? '#10b981' : '#f59e0b';
   const statusText = pursuit.status === 'active' ? 'Active' : 'Awaiting Kickoff';
 
@@ -49,9 +50,31 @@ export default function PursuitCard({ pursuit, onPress }: PursuitCardProps) {
       </View>
 
       {pursuit.creator && (
-        <Text style={styles.creator}>
-          Created by {pursuit.creator.email?.split('@')[0]}
-        </Text>
+        <TouchableOpacity
+          style={styles.creatorContainer}
+          onPress={(e) => {
+            e.stopPropagation();
+            onCreatorPress?.();
+          }}
+          disabled={!onCreatorPress}
+        >
+          {pursuit.creator.profile_picture ? (
+            <Image
+              source={{ uri: pursuit.creator.profile_picture }}
+              style={styles.creatorAvatar}
+            />
+          ) : (
+            <View style={styles.creatorAvatar}>
+              <Text style={styles.creatorAvatarText}>
+                {pursuit.creator.name?.charAt(0).toUpperCase() ||
+                 pursuit.creator.email?.charAt(0).toUpperCase() || '?'}
+              </Text>
+            </View>
+          )}
+          <Text style={styles.creator}>
+            Created by {pursuit.creator.name || pursuit.creator.email?.split('@')[0]}
+          </Text>
+        </TouchableOpacity>
       )}
     </TouchableOpacity>
   );
@@ -129,9 +152,28 @@ const styles = StyleSheet.create({
     color: '#666',
     marginLeft: 4,
   },
+  creatorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 4,
+  },
+  creatorAvatar: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#0ea5e9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  creatorAvatarText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
   creator: {
     fontSize: 12,
-    color: '#999',
+    color: '#666',
     fontStyle: 'italic',
   },
 });

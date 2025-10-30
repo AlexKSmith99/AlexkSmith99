@@ -258,12 +258,22 @@ export default function PursuitDetailScreen({ route, navigation }: any) {
               style={styles.memberRow}
               onPress={() => navigation.navigate('UserProfile', { userId: member.user_id })}
             >
-              <View style={styles.avatar}>
-                <Ionicons name="person" size={20} color="#fff" />
-              </View>
+              {member.user?.profile_picture ? (
+                <Image
+                  source={{ uri: member.user.profile_picture }}
+                  style={styles.memberAvatar}
+                />
+              ) : (
+                <View style={styles.memberAvatar}>
+                  <Text style={styles.memberAvatarText}>
+                    {member.user?.name?.charAt(0).toUpperCase() ||
+                     member.user?.email?.charAt(0).toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )}
               <View style={styles.memberInfo}>
                 <Text style={styles.memberName}>
-                  {member.user?.email?.split('@')[0]}
+                  {member.user?.name || member.user?.email?.split('@')[0] || 'Unknown'}
                 </Text>
                 {member.is_admin && (
                   <View style={styles.adminBadge}>
@@ -271,6 +281,7 @@ export default function PursuitDetailScreen({ route, navigation }: any) {
                   </View>
                 )}
               </View>
+              <Ionicons name="chevron-forward" size={20} color="#999" />
             </TouchableOpacity>
           ))}
           {isMember && (
@@ -449,7 +460,23 @@ const styles = StyleSheet.create({
   memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  memberAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0ea5e9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  memberAvatarText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   memberInfo: {
     flex: 1,
@@ -457,8 +484,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   memberName: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#333',
+    fontWeight: '500',
   },
   adminBadge: {
     backgroundColor: '#f59e0b',

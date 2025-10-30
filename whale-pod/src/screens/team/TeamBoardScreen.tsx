@@ -9,8 +9,11 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { getOrCreateBoard, getTasks, createTask, updateTask, deleteTask, Task } from '../../services/teamBoardService';
+import { pursuitService } from '../../services/pursuitService';
+import { Pursuit } from '../../types';
 
 interface TeamBoardScreenProps {
   pursuitId: string;
@@ -20,11 +23,13 @@ interface TeamBoardScreenProps {
 export default function TeamBoardScreen({ pursuitId, onBack }: TeamBoardScreenProps) {
   const [boardId, setBoardId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [pursuit, setPursuit] = useState<Pursuit | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null);
 
   useEffect(() => {
     loadBoard();
@@ -32,10 +37,22 @@ export default function TeamBoardScreen({ pursuitId, onBack }: TeamBoardScreenPr
 
   const loadBoard = async () => {
     setLoading(true);
-    const board = await getOrCreateBoard(pursuitId);
-    if (board) {
-      setBoardId(board.id);
-      await loadTasks(board.id);
+    try {
+      const [board, pursuitData] = await Promise.all([
+        getOrCreateBoard(pursuitId),
+        pursuitService.getPursuit(pursuitId)
+      ]);
+
+      if (board) {
+        setBoardId(board.id);
+        await loadTasks(board.id);
+      }
+
+      if (pursuitData) {
+        setPursuit(pursuitData);
+      }
+    } catch (error) {
+      console.error('Error loading board:', error);
     }
     setLoading(false);
   };
@@ -57,7 +74,7 @@ export default function TeamBoardScreen({ pursuitId, onBack }: TeamBoardScreenPr
       boardId,
       newTaskTitle,
       newTaskDescription,
-      undefined,
+      selectedParticipant || undefined,
       newTaskPriority
     );
 
@@ -66,6 +83,7 @@ export default function TeamBoardScreen({ pursuitId, onBack }: TeamBoardScreenPr
       setNewTaskTitle('');
       setNewTaskDescription('');
       setNewTaskPriority('medium');
+      setSelectedParticipant(null);
       setShowAddTask(false);
     }
   };
@@ -270,6 +288,54 @@ export default function TeamBoardScreen({ pursuitId, onBack }: TeamBoardScreenPr
               ))}
             </View>
 
+            <Text style={styles.label}>Assign To (optional)</Text>
+            <ScrollView style={styles.participantsList} horizontal showsHorizontalScrollIndicator={false}>
+              <TouchableOpacity
+                style={[
+                  styles.participantButton,
+                  selectedParticipant === null && styles.participantButtonActive
+                ]}
+                onPress={() => setSelectedParticipant(null)}
+              >
+                <Text style={[
+                  styles.participantButtonText,
+                  selectedParticipant === null && styles.participantButtonTextActive
+                ]}>
+                  Unassigned
+                </Text>
+              </TouchableOpacity>
+              {pursuit?.members?.map((member) => (
+                <TouchableOpacity
+                  key={member.user_id}
+                  style={[
+                    styles.participantButton,
+                    selectedParticipant === member.user_id && styles.participantButtonActive
+                  ]}
+                  onPress={() => setSelectedParticipant(member.user_id)}
+                >
+                  {member.user?.profile_picture ? (
+                    <Image
+                      source={{ uri: member.user.profile_picture }}
+                      style={styles.participantAvatar}
+                    />
+                  ) : (
+                    <View style={styles.participantAvatar}>
+                      <Text style={styles.participantAvatarText}>
+                        {member.user?.name?.charAt(0).toUpperCase() ||
+                         member.user?.email?.charAt(0).toUpperCase() || '?'}
+                      </Text>
+                    </View>
+                  )}
+                  <Text style={[
+                    styles.participantButtonText,
+                    selectedParticipant === member.user_id && styles.participantButtonTextActive
+                  ]}>
+                    {member.user?.name || member.user?.email?.split('@')[0] || 'Unknown'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -278,6 +344,7 @@ export default function TeamBoardScreen({ pursuitId, onBack }: TeamBoardScreenPr
                   setNewTaskTitle('');
                   setNewTaskDescription('');
                   setNewTaskPriority('medium');
+                  setSelectedParticipant(null);
                 }}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -516,5 +583,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  participantsList: {
+    maxHeight: 100,
+    marginBottom: 24,
+  },
+  participantButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    backgroundColor: '#fff',
+    marginRight: 8,
+  },
+  participantButtonActive: {
+    borderColor: '#0ea5e9',
+    backgroundColor: '#eff6ff',
+  },
+  participantAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#0ea5e9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  participantAvatarText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  participantButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  participantButtonTextActive: {
+    color: '#0ea5e9',
+    fontWeight: '600',
   },
 });

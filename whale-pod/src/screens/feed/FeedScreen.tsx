@@ -105,7 +105,11 @@ export default function FeedScreen({ navigation }: any) {
         data={pursuits}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <PursuitCard pursuit={item} onPress={() => navigation.navigate('PursuitDetail', { pursuitId: item.id })} />
+          <PursuitCard
+            pursuit={item}
+            onPress={() => navigation.navigate('PursuitDetail', { pursuitId: item.id })}
+            onCreatorPress={() => item.creator_id && navigation.navigate('UserProfile', { userId: item.creator_id })}
+          />
         )}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />

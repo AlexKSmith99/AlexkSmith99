@@ -68,10 +68,13 @@ export default function MyProfileScreen({ navigation }: any) {
       </View>
 
       <View style={styles.statsSection}>
-        <View style={styles.statItem}>
+        <TouchableOpacity
+          style={styles.statItem}
+          onPress={() => navigation.navigate('Connections')}
+        >
           <Text style={styles.statValue}>{profile?.connections_count || 0}</Text>
           <Text style={styles.statLabel}>Connections</Text>
-        </View>
+        </TouchableOpacity>
         <View style={styles.statItem}>
           <Text style={styles.statValue}>
             {profile?.active_pursuits?.length || 0}
