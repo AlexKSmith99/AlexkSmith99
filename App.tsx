@@ -1,3 +1,4 @@
+// *** TEST COMMENT FROM CLAUDE - If you see this, git pull is working! ***
 import React, { useState } from 'react';
 import { View, ActivityIndicator, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
