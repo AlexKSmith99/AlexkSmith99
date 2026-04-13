@@ -26,12 +26,13 @@ from docx.oxml import parse_xml
 # ===================================================================
 # RESUME PDF
 # ===================================================================
-_FONT_DIR = "/usr/share/fonts/truetype/dejavu"
-_FONT_REGULAR = f"{_FONT_DIR}/DejaVuSans.ttf"
-_FONT_BOLD = f"{_FONT_DIR}/DejaVuSans-Bold.ttf"
+import os as _os
+_FONT_DIR = _os.path.join(_os.path.dirname(__file__), "fonts")
+_FONT_REGULAR = _os.path.join(_FONT_DIR, "DejaVuSans.ttf")
+_FONT_BOLD = _os.path.join(_FONT_DIR, "DejaVuSans-Bold.ttf")
 # No oblique variant available; fall back to regular for italic
-_FONT_ITALIC = f"{_FONT_DIR}/DejaVuSans.ttf"
-_FONT_BOLD_ITALIC = f"{_FONT_DIR}/DejaVuSans-Bold.ttf"
+_FONT_ITALIC = _os.path.join(_FONT_DIR, "DejaVuSans.ttf")
+_FONT_BOLD_ITALIC = _os.path.join(_FONT_DIR, "DejaVuSans-Bold.ttf")
 
 
 class ResumePDF(FPDF):
