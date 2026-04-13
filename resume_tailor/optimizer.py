@@ -1,12 +1,14 @@
 """
 Resume optimizer that injects missing JD keywords to achieve 75%+ match.
 
-Strategy (mirrors what Jobscan recommends):
-1. Add missing hard skills to Core Competencies
-2. Weave missing terms into the professional summary
-3. Inject keywords into the most contextually relevant experience bullets
-4. Update profile title if JD title differs
-5. Recalculate score after each change; stop at target
+AGGRESSIVE MODE: Makes significantly more changes to maximize keyword coverage.
+Strategy:
+1. Add ALL missing hard skills to Core Competencies (no cap)
+2. Weave many terms into the professional summary
+3. Inject keywords into experience bullets (higher per-bullet limit)
+4. Use fallback clause injection when natural insertion fails
+5. Enrich ALL role summaries with remaining keywords
+6. Repeat keyword injection across multiple bullets for frequency matching
 """
 
 import copy
@@ -30,7 +32,7 @@ class ResumeOptimizer:
           (optimized_resume, baseline_score, final_score, report, changes_log)
         """
         self.changes_log = []
-        self._bullet_mod_count = {}  # (job_idx, bullet_idx) -> count of mods
+        self._bullet_mod_count = {}
 
         # Deep copy master resume
         resume = copy.deepcopy(MASTER_RESUME)
@@ -59,20 +61,23 @@ class ResumeOptimizer:
         if not missing:
             return resume, baseline_score, baseline_score, baseline_report, []
 
-        # --- Phase 1: Update profile title if JD has a specific title ---
+        # --- Phase 1: Update profile title ---
         self._optimize_title(resume, jd_text, missing)
 
-        # --- Phase 2: Add hard skills to Core Competencies ---
+        # --- Phase 2: Add ALL missing hard skills to Core Competencies ---
         self._optimize_skills_section(resume, missing)
 
-        # --- Phase 3: Enrich professional summary ---
+        # --- Phase 3: Enrich professional summary (generous) ---
         self._optimize_summary(resume, missing)
 
-        # --- Phase 4: Weave keywords into experience bullets ---
+        # --- Phase 4: Weave keywords into experience bullets (aggressive) ---
         self._optimize_bullets(resume, missing)
 
-        # --- Phase 5: Enrich role summaries ---
+        # --- Phase 5: Enrich role summaries (all jobs) ---
         self._optimize_role_summaries(resume, missing)
+
+        # --- Phase 6: Second pass — catch anything still missing ---
+        self._second_pass_bullets(resume, jd_keywords)
 
         # Final score
         final_text = resume_to_plain_text(resume)
@@ -88,8 +93,6 @@ class ResumeOptimizer:
     # ------------------------------------------------------------------
     def _optimize_title(self, resume, jd_text, missing):
         """Update profile title to match JD title if different."""
-        jd_lower = jd_text.lower()
-        # Try to extract the job title from the first few lines
         lines = jd_text.strip().split("\n")
         for line in lines[:5]:
             line_clean = line.strip()
@@ -97,10 +100,8 @@ class ResumeOptimizer:
                 t.lower() in line_clean.lower()
                 for t in ["analyst", "engineer", "scientist", "manager", "developer"]
             ):
-                # Check if this differs from current title
                 current = resume["profile"]["title"]
                 if line_clean.lower() != current.lower() and len(line_clean) > 5:
-                    # Only update if it's a reasonable title
                     if len(line_clean.split()) <= 6:
                         resume["profile"]["title"] = line_clean
                         self.changes_log.append(
@@ -109,64 +110,48 @@ class ResumeOptimizer:
                         break
 
     # ------------------------------------------------------------------
-    # Phase 2: Core Competencies
+    # Phase 2: Core Competencies — NO CAP, add all missing hard skills
     # ------------------------------------------------------------------
     def _optimize_skills_section(self, resume, missing):
-        """Add missing hard skills to Core Competencies."""
+        """Add ALL missing hard skills to Core Competencies."""
         current_skills = resume["profile"]["core_competencies"]
         current_lower = {s.lower() for s in current_skills}
-        # Also expand compound skills like "Python (Pandas, Numpy)"
         for s in list(current_lower):
-            # Extract parenthetical items
             paren_match = re.search(r"\(([^)]+)\)", s)
             if paren_match:
                 for item in paren_match.group(1).split(","):
                     current_lower.add(item.strip().lower())
 
-        added = 0
-        max_add = 6  # Don't overcrowd the skills section
-
         for kw, info in missing:
-            if added >= max_add:
-                break
             if info["category"] != "hard_skills":
                 continue
             kw_lower = kw.lower()
             if kw_lower in current_lower:
                 continue
-            # Check if it's a sub-skill that could be added to an existing entry
             inserted = self._try_insert_sub_skill(current_skills, kw)
             if not inserted:
                 current_skills.append(kw)
-                self.changes_log.append(
-                    f"Added '{kw}' to Core Competencies"
-                )
+                self.changes_log.append(f"Added '{kw}' to Core Competencies")
             else:
-                self.changes_log.append(
-                    f"Inserted '{kw}' into existing competency entry"
-                )
+                self.changes_log.append(f"Inserted '{kw}' into existing competency")
             current_lower.add(kw_lower)
-            info["matched"] = True  # Mark as addressed
-            added += 1
+            info["matched"] = True
 
     def _try_insert_sub_skill(self, skills, keyword):
         """Try to add a sub-skill inside parentheses of an existing skill."""
         kw_lower = keyword.lower()
-        # Map of parent -> possible sub-skills
         parent_map = {
             "python": ["Pandas", "NumPy", "scikit-learn", "SciPy", "Matplotlib",
-                        "Seaborn", "PySpark", "Airflow"],
+                        "Seaborn", "PySpark", "Airflow", "Flask", "Django"],
             "aws": ["S3", "EC2", "Lambda", "Glue", "Athena", "Redshift", "EMR"],
             "gcp": ["BigQuery", "Cloud Functions", "Cloud Storage"],
             "azure": ["Synapse", "Data Factory"],
         }
         for i, skill in enumerate(skills):
             skill_base = skill.split("(")[0].strip().lower()
-            # Check if keyword's parent is this skill
             for parent, subs in parent_map.items():
                 sub_names_lower = [s.lower() for s in subs]
                 if parent in skill_base and kw_lower in sub_names_lower:
-                    # Add to parenthetical
                     if "(" in skill:
                         skills[i] = skill.rstrip(")") + f", {keyword})"
                     else:
@@ -175,47 +160,41 @@ class ResumeOptimizer:
         return False
 
     # ------------------------------------------------------------------
-    # Phase 3: Summary optimization
+    # Phase 3: Summary — generous, up to 8 terms
     # ------------------------------------------------------------------
     def _optimize_summary(self, resume, missing):
-        """Weave missing soft skills and key terms into the summary."""
+        """Weave missing soft skills, industry terms, and key phrases into summary."""
         summary = resume["profile"]["summary"]
         additions = []
 
         for kw, info in missing:
             if info.get("matched"):
                 continue
-            if info["category"] in ("soft_skills", "industry_terms"):
+            if info["category"] in ("soft_skills", "industry_terms", "action_verbs"):
                 kw_lower = kw.lower()
                 if kw_lower not in summary.lower():
                     additions.append(kw_lower)
                     info["matched"] = True
-                    if len(additions) >= 4:
+                    if len(additions) >= 8:
                         break
 
         if additions:
-            # Integrate into summary naturally
-            # Strategy: append a clause to the summary
             extra_terms = ", ".join(additions[:-1])
             if len(additions) > 1:
                 extra_terms += f", and {additions[-1]}"
             else:
                 extra_terms = additions[0]
-
-            # Find a good insertion point
             if summary.endswith("."):
                 summary = summary[:-1]
             summary += f", with expertise in {extra_terms}."
             resume["profile"]["summary"] = summary
-            self.changes_log.append(
-                f"Enriched summary with: {', '.join(additions)}"
-            )
+            self.changes_log.append(f"Enriched summary with: {', '.join(additions)}")
 
     # ------------------------------------------------------------------
-    # Phase 4: Experience bullet optimization
+    # Phase 4: Bullet optimization — aggressive
     # ------------------------------------------------------------------
     def _optimize_bullets(self, resume, missing):
-        """Inject missing keywords into the most relevant experience bullets."""
+        """Inject missing keywords into experience bullets. Higher limits."""
         remaining = [
             (kw, info) for kw, info in missing
             if not info.get("matched") and info["category"] in (
@@ -223,7 +202,7 @@ class ResumeOptimizer:
             )
         ]
 
-        max_mods_per_bullet = 2  # Don't overload any single bullet
+        max_mods_per_bullet = 3  # Allow more changes per bullet
 
         for kw, info in remaining:
             best = self._find_best_bullet(resume, kw)
@@ -231,7 +210,15 @@ class ResumeOptimizer:
                 job_idx, bullet_idx, bullet = best
                 key = (job_idx, bullet_idx)
                 if self._bullet_mod_count.get(key, 0) >= max_mods_per_bullet:
-                    continue  # Skip — this bullet is already heavily modified
+                    # Try to find another bullet
+                    best = self._find_next_best_bullet(resume, kw, exclude=key)
+                    if not best:
+                        continue
+                    job_idx, bullet_idx, bullet = best
+                    key = (job_idx, bullet_idx)
+                    if self._bullet_mod_count.get(key, 0) >= max_mods_per_bullet:
+                        continue
+
                 new_bullet = self._inject_into_bullet(bullet, kw, info["category"])
                 if new_bullet != bullet:
                     resume["experience"][job_idx]["bullets"][bullet_idx] = new_bullet
@@ -245,34 +232,26 @@ class ResumeOptimizer:
     def _find_best_bullet(self, resume, keyword):
         """Find the experience bullet most relevant to a keyword."""
         kw_lower = keyword.lower()
-        kw_stem = _simple_stem(kw_lower)
         best_score = -1
         best = None
 
-        # Check which companies used this skill
         companies = find_companies_for_skill(keyword)
 
         for job_idx, job in enumerate(resume["experience"]):
-            # Prefer companies where the skill was actually used
             company_bonus = 2.0 if job["company_short"] in companies else 0.0
 
             for bullet_idx, bullet in enumerate(job["bullets"]):
                 bullet_lower = bullet.lower()
-                # Skip if keyword already present
                 if kw_lower in bullet_lower:
                     continue
-                # Penalize already-modified bullets to spread changes
-                mod_penalty = self._bullet_mod_count.get((job_idx, bullet_idx), 0) * 3.0
+                mod_penalty = self._bullet_mod_count.get((job_idx, bullet_idx), 0) * 2.0
 
-                # Score based on semantic relevance
                 score = company_bonus - mod_penalty
-                # Count related words
                 bullet_words = set(re.findall(r"[a-z]+", bullet_lower))
                 kw_words = set(re.findall(r"[a-z]+", kw_lower))
                 overlap = len(bullet_words & kw_words)
                 score += overlap * 1.5
 
-                # Check for related tools/context
                 related_contexts = {
                     "sql": ["database", "query", "data", "table", "postgresql", "etl"],
                     "python": ["script", "automat", "pandas", "model", "analys"],
@@ -297,21 +276,39 @@ class ResumeOptimizer:
                     best_score = score
                     best = (job_idx, bullet_idx, bullet)
 
-        return best if best_score > 0 else None
+        return best if best_score > -1 else None
+
+    def _find_next_best_bullet(self, resume, keyword, exclude=None):
+        """Find second-best bullet, excluding one already at capacity."""
+        kw_lower = keyword.lower()
+        best_score = -1
+        best = None
+
+        for job_idx, job in enumerate(resume["experience"]):
+            for bullet_idx, bullet in enumerate(job["bullets"]):
+                key = (job_idx, bullet_idx)
+                if key == exclude:
+                    continue
+                if kw_lower in bullet.lower():
+                    continue
+                mod_count = self._bullet_mod_count.get(key, 0)
+                score = 1.0 - mod_count * 2.0
+                if score > best_score:
+                    best_score = score
+                    best = (job_idx, bullet_idx, bullet)
+
+        return best if best_score > -1 else None
 
     def _inject_into_bullet(self, bullet, keyword, category):
         """Inject a keyword into a bullet point naturally."""
         kw_lower = keyword.lower()
 
         # Strategy 1: Add to a list of tools/technologies
-        # Look for patterns like "using X, Y, and Z" or "in X and Y"
         tool_list_pattern = r"(using |in |with |leveraging |via )([\w\s,/()]+?)(\s+to\b|\s+for\b|\s+that\b|;|,\s*(?:which|resulting|providing|built|increasing|decreasing))"
         match = re.search(tool_list_pattern, bullet, re.IGNORECASE)
         if match and category == "hard_skills":
-            prefix = match.group(1)
             tools = match.group(2).strip()
             suffix = match.group(3)
-            # Add keyword to the tools list
             if " and " in tools:
                 new_tools = tools.replace(" and ", f", {keyword}, and ", 1)
             elif "," in tools:
@@ -323,7 +320,6 @@ class ResumeOptimizer:
 
         # Strategy 2: For action verbs, try to swap a similar verb
         if category == "action_verbs":
-            # Maps target_verb -> list of (old_verb_to_find, replacement_past_tense)
             verb_swaps = {
                 "analyze": [("assessed", "analyzed"), ("evaluated", "analyzed"),
                             ("examined", "analyzed"), ("reviewed", "analyzed")],
@@ -353,7 +349,6 @@ class ResumeOptimizer:
                         pattern = r"\b" + re.escape(old_verb) + r"\b"
                         match = re.search(pattern, bullet, re.IGNORECASE)
                         if match:
-                            # Preserve capitalization of original
                             replacement = new_past_tense
                             if match.group(0)[0].isupper():
                                 replacement = replacement[0].upper() + replacement[1:]
@@ -365,10 +360,8 @@ class ResumeOptimizer:
                             if new_bullet != bullet:
                                 return new_bullet
 
-        # Strategy 3: For hard skills, try to insert into a tool mention
-        # e.g. "using SQL" -> "using SQL and Snowflake"
+        # Strategy 3: Insert alongside existing tool mentions
         if category == "hard_skills" and bullet.endswith("."):
-            # Look for tool mentions and add alongside them
             tool_mentions = [
                 (r"(SQL\b)", f"SQL and {keyword}"),
                 (r"(Tableau\b)", f"Tableau and {keyword}"),
@@ -376,6 +369,10 @@ class ResumeOptimizer:
                 (r"(Excel\b)", f"Excel and {keyword}"),
                 (r"(DBT\b)", f"DBT and {keyword}"),
                 (r"(PostgreSQL\b)", f"PostgreSQL and {keyword}"),
+                (r"(Airflow\b)", f"Airflow and {keyword}"),
+                (r"(Looker Studio\b)", f"Looker Studio and {keyword}"),
+                (r"(Google Analytics\b)", f"Google Analytics and {keyword}"),
+                (r"(Alteryx\b)", f"Alteryx and {keyword}"),
             ]
             for pattern, replacement in tool_mentions:
                 if re.search(pattern, bullet) and keyword not in bullet:
@@ -383,35 +380,48 @@ class ResumeOptimizer:
                     if new_bullet != bullet:
                         return new_bullet
 
-        # Strategy 4: Skip rather than add formulaic "utilizing X" / "supporting X initiatives"
-        # It's better to leave a bullet unchanged than to add an awkward appendage
+        # Strategy 4: Append a contextual clause (ENABLED — not skipped)
+        if bullet.endswith("."):
+            if category == "hard_skills":
+                new_bullet = bullet[:-1] + f", leveraging {keyword}."
+                return new_bullet
+            elif category == "industry_terms":
+                new_bullet = bullet[:-1] + f", driving {kw_lower} outcomes."
+                return new_bullet
+            elif category == "action_verbs":
+                # Add as a gerund clause
+                new_bullet = bullet[:-1] + f", helping to {kw_lower} key processes."
+                return new_bullet
+
         return bullet
 
     # ------------------------------------------------------------------
-    # Phase 5: Role summary optimization
+    # Phase 5: Role summary optimization — ALL jobs, no cap
     # ------------------------------------------------------------------
     def _optimize_role_summaries(self, resume, missing):
-        """Add remaining missing keywords to role summary paragraphs."""
+        """Add remaining missing keywords to ALL role summaries."""
         remaining = [
             (kw, info) for kw, info in missing
-            if not info.get("matched") and info["importance"] >= 1.5
+            if not info.get("matched") and info["importance"] >= 0.5
         ]
         if not remaining:
             return
 
-        # Group remaining keywords by best-fit job, then insert as one clause
-        job_additions = {}  # job_idx -> list of keywords
-        for kw, info in remaining[:4]:
+        # Group keywords by best-fit job
+        job_additions = {}
+        for kw, info in remaining:
             companies = find_companies_for_skill(kw)
             for job_idx, job in enumerate(resume["experience"]):
                 if job["company_short"] in companies:
                     if kw.lower() not in job["summary"].lower():
                         job_additions.setdefault(job_idx, []).append((kw, info))
                         break
+            else:
+                # Default to first job
+                job_additions.setdefault(0, []).append((kw, info))
 
         for job_idx, kw_list in job_additions.items():
             job = resume["experience"][job_idx]
-            # Preserve original casing for proper nouns (Databricks, BigQuery, etc.)
             terms = [kw for kw, _ in kw_list]
             if len(terms) == 1:
                 clause = terms[0]
@@ -430,3 +440,56 @@ class ResumeOptimizer:
             self.changes_log.append(
                 f"Enriched {job['company_short']} role summary with: {clause}"
             )
+
+    # ------------------------------------------------------------------
+    # Phase 6: Second pass — re-check and inject any still-missing
+    # ------------------------------------------------------------------
+    def _second_pass_bullets(self, resume, jd_keywords):
+        """
+        Re-analyze the current resume text and inject any keywords
+        that are still missing after all previous phases.
+        """
+        current_text = resume_to_plain_text(resume)
+        jd_kw_check = copy.deepcopy(jd_keywords)
+        self.analyzer.match_resume(current_text, jd_kw_check)
+
+        still_missing = [
+            (kw, info) for kw, info in jd_kw_check.items()
+            if not info["matched"] and info["importance"] >= 1.0
+        ]
+        still_missing.sort(key=lambda x: x[1]["importance"], reverse=True)
+
+        if not still_missing:
+            return
+
+        # Try to inject into any bullet that has room
+        for kw, info in still_missing:
+            kw_lower = kw.lower()
+            injected = False
+
+            for job_idx, job in enumerate(resume["experience"]):
+                if injected:
+                    break
+                for bullet_idx, bullet in enumerate(job["bullets"]):
+                    key = (job_idx, bullet_idx)
+                    if self._bullet_mod_count.get(key, 0) >= 4:
+                        continue
+                    if kw_lower in bullet.lower():
+                        break  # Already present
+
+                    # Force inject with contextual clause
+                    if bullet.endswith("."):
+                        if info["category"] == "hard_skills":
+                            new_bullet = bullet[:-1] + f", utilizing {kw}."
+                        elif info["category"] == "action_verbs":
+                            new_bullet = bullet[:-1] + f", aiming to {kw_lower} outcomes."
+                        else:
+                            new_bullet = bullet[:-1] + f", supporting {kw_lower} initiatives."
+                        resume["experience"][job_idx]["bullets"][bullet_idx] = new_bullet
+                        self._bullet_mod_count[key] = self._bullet_mod_count.get(key, 0) + 1
+                        company = resume["experience"][job_idx]["company_short"]
+                        self.changes_log.append(
+                            f"[Pass 2] Added '{kw}' to {company} bullet {bullet_idx + 1}"
+                        )
+                        injected = True
+                        break
