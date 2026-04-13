@@ -30,6 +30,9 @@ st.set_page_config(
     layout="wide",
 )
 
+# Version marker — if you see this in the app, the latest code is deployed
+_APP_VERSION = "v2.1-fonts-bundled"
+
 # ---------------------------------------------------------------------------
 # Styling
 # ---------------------------------------------------------------------------
@@ -446,3 +449,6 @@ python -m resume_tailor resume --jd-file jd.txt
 python -m resume_tailor cover-letter \\
   --jd-file jd.txt -c "Brex" -t "Data Analyst III"
 """, language="bash")
+
+    st.divider()
+    st.caption(f"App version: {_APP_VERSION}")
