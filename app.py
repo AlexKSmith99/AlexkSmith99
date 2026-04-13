@@ -17,7 +17,10 @@ from resume_tailor.formatter import (
 )
 from resume_tailor.optimizer import ResumeOptimizer
 from resume_tailor.resume_data import MASTER_RESUME, resume_to_plain_text
-from resume_tailor.template_formatter import generate_resume_from_template
+from resume_tailor.template_formatter import (
+    generate_resume_from_template,
+    generate_resume_pdf_from_template,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +33,7 @@ st.set_page_config(
 )
 
 # Version marker — if you see this in the app, the latest code is deployed
-_APP_VERSION = "v2.1-fonts-bundled"
+_APP_VERSION = "v3.0-template-pdf"
 
 # ---------------------------------------------------------------------------
 # Styling
@@ -83,8 +86,16 @@ def score_html(score, label=""):
 # Helper: generate files to in-memory buffers
 # ---------------------------------------------------------------------------
 def generate_resume_files(resume_data):
-    """Generate DOCX from the original resume template (preserves exact design)."""
+    """Generate PDF from the original resume template (preserves exact design)."""
+    pdf_buf = io.BytesIO()
     docx_buf = io.BytesIO()
+
+    # PDF — template .docx converted via LibreOffice
+    pdf_path = "/tmp/_resume_temp.pdf"
+    generate_resume_pdf_from_template(resume_data, pdf_path)
+    with open(pdf_path, "rb") as f:
+        pdf_buf.write(f.read())
+    pdf_buf.seek(0)
 
     # DOCX — template-based (preserves all original formatting)
     docx_path = "/tmp/_resume_temp.docx"
@@ -93,7 +104,7 @@ def generate_resume_files(resume_data):
         docx_buf.write(f.read())
     docx_buf.seek(0)
 
-    return docx_buf
+    return pdf_buf, docx_buf
 
 
 def generate_cl_files(cl_data):
@@ -174,7 +185,7 @@ with tab_resume:
             optimized, baseline_score, final_score, final_report, changes = optimizer.optimize(jd_text_resume)
 
             # Generate files
-            docx_buf = generate_resume_files(optimized)
+            pdf_buf, docx_buf = generate_resume_files(optimized)
 
         # --- Results ---
         st.divider()
@@ -226,17 +237,26 @@ with tab_resume:
                     cat_label = CATEGORY_LABELS.get(kw["category"], kw["category"])
                     st.write(f"{level} **{kw['keyword']}** — {cat_label}")
 
-        # Download button
+        # Download buttons
         st.divider()
         st.subheader("Download Optimized Resume")
-        st.download_button(
-            "📥 Download DOCX (preserves your exact resume design)",
-            data=docx_buf,
-            file_name="tailored_resume.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True,
-        )
-        st.caption("To get PDF: open the .docx in Word or Google Docs → File → Export/Download as PDF")
+        col_dl1, col_dl2 = st.columns(2)
+        with col_dl1:
+            st.download_button(
+                "📥 Download PDF",
+                data=pdf_buf,
+                file_name="tailored_resume.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        with col_dl2:
+            st.download_button(
+                "📥 Download DOCX",
+                data=docx_buf,
+                file_name="tailored_resume.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+            )
 
 
 # ===================================================================

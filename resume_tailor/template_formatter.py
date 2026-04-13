@@ -8,6 +8,8 @@ Instead of generating a resume from scratch, this opens the user's actual
 
 import copy
 import os
+import subprocess
+import tempfile
 from pathlib import Path
 
 from docx import Document
@@ -208,3 +210,56 @@ def _update_experience(doc, experience_data):
 def generate_resume_docx_from_template(resume_data, output_path):
     """Alias for the template-based generation."""
     return generate_resume_from_template(resume_data, output_path)
+
+
+def generate_resume_pdf_from_template(resume_data, output_path):
+    """
+    Generate a PDF resume by:
+    1. Creating a .docx from the template (preserves exact formatting)
+    2. Converting to PDF via LibreOffice
+
+    LibreOffice is required. On Streamlit Cloud, add 'libreoffice' to packages.txt.
+    """
+    import shutil
+
+    # Use /tmp for LibreOffice compatibility
+    docx_path = "/tmp/_resume_for_pdf.docx"
+    generate_resume_from_template(resume_data, docx_path)
+
+    # Remove stale lock files and any previous PDF
+    pdf_path = "/tmp/_resume_for_pdf.pdf"
+    for stale in [pdf_path, "/tmp/.~lock._resume_for_pdf.docx#"]:
+        if os.path.exists(stale):
+            os.remove(stale)
+
+    # Convert to PDF via LibreOffice with a unique user profile to avoid locking
+    user_profile = "/tmp/_lo_profile"
+    os.makedirs(user_profile, exist_ok=True)
+
+    result = subprocess.run(
+        [
+            "libreoffice",
+            "--headless",
+            "--nolockcheck",
+            "--norestore",
+            f"-env:UserInstallation=file://{user_profile}",
+            "--convert-to", "pdf",
+            "--outdir", "/tmp",
+            docx_path,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    if not os.path.isfile(pdf_path):
+        raise RuntimeError(
+            f"LibreOffice PDF conversion failed.\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+
+    # Move to desired output path
+    if os.path.abspath(output_path) != os.path.abspath(pdf_path):
+        shutil.copy2(pdf_path, output_path)
+
+    return output_path
