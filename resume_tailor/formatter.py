@@ -13,7 +13,10 @@ And cover letter design:
 - Closing, signature
 """
 
+import os
 import re
+from pathlib import Path
+
 from fpdf import FPDF
 from docx import Document
 from docx.shared import Inches, Pt, Cm, RGBColor
@@ -24,15 +27,21 @@ from docx.oxml import parse_xml
 
 
 # ===================================================================
-# RESUME PDF
+# FONT SETUP — bundled fonts so it works on Streamlit Cloud
 # ===================================================================
-import os as _os
-_FONT_DIR = _os.path.join(_os.path.dirname(__file__), "fonts")
-_FONT_REGULAR = _os.path.join(_FONT_DIR, "DejaVuSans.ttf")
-_FONT_BOLD = _os.path.join(_FONT_DIR, "DejaVuSans-Bold.ttf")
-# No oblique variant available; fall back to regular for italic
-_FONT_ITALIC = _os.path.join(_FONT_DIR, "DejaVuSans.ttf")
-_FONT_BOLD_ITALIC = _os.path.join(_FONT_DIR, "DejaVuSans-Bold.ttf")
+_PACKAGE_DIR = Path(__file__).resolve().parent
+_FONT_DIR = _PACKAGE_DIR / "fonts"
+_FONT_REGULAR = str(_FONT_DIR / "DejaVuSans.ttf")
+_FONT_BOLD = str(_FONT_DIR / "DejaVuSans-Bold.ttf")
+_FONT_ITALIC = _FONT_REGULAR  # No oblique variant; reuse regular
+_FONT_BOLD_ITALIC = _FONT_BOLD
+
+# Verify fonts exist at import time
+if not os.path.isfile(_FONT_REGULAR):
+    raise FileNotFoundError(
+        f"Bundled font not found at {_FONT_REGULAR}. "
+        f"Contents of {_FONT_DIR}: {list(_FONT_DIR.iterdir()) if _FONT_DIR.is_dir() else 'DIR MISSING'}"
+    )
 
 
 class ResumePDF(FPDF):
