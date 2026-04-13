@@ -14,11 +14,10 @@ from resume_tailor.cover_letter import generate_cover_letter
 from resume_tailor.formatter import (
     generate_cover_letter_docx,
     generate_cover_letter_pdf,
-    generate_resume_docx,
-    generate_resume_pdf,
 )
 from resume_tailor.optimizer import ResumeOptimizer
 from resume_tailor.resume_data import MASTER_RESUME, resume_to_plain_text
+from resume_tailor.template_formatter import generate_resume_from_template
 
 
 # ---------------------------------------------------------------------------
@@ -84,25 +83,17 @@ def score_html(score, label=""):
 # Helper: generate files to in-memory buffers
 # ---------------------------------------------------------------------------
 def generate_resume_files(resume_data):
-    """Generate PDF and DOCX into BytesIO buffers."""
-    pdf_buf = io.BytesIO()
+    """Generate DOCX from the original resume template (preserves exact design)."""
     docx_buf = io.BytesIO()
 
-    # PDF
-    pdf_path = "/tmp/_resume_temp.pdf"
-    generate_resume_pdf(resume_data, pdf_path)
-    with open(pdf_path, "rb") as f:
-        pdf_buf.write(f.read())
-    pdf_buf.seek(0)
-
-    # DOCX
+    # DOCX — template-based (preserves all original formatting)
     docx_path = "/tmp/_resume_temp.docx"
-    generate_resume_docx(resume_data, docx_path)
+    generate_resume_from_template(resume_data, docx_path)
     with open(docx_path, "rb") as f:
         docx_buf.write(f.read())
     docx_buf.seek(0)
 
-    return pdf_buf, docx_buf
+    return docx_buf
 
 
 def generate_cl_files(cl_data):
@@ -183,7 +174,7 @@ with tab_resume:
             optimized, baseline_score, final_score, final_report, changes = optimizer.optimize(jd_text_resume)
 
             # Generate files
-            pdf_buf, docx_buf = generate_resume_files(optimized)
+            docx_buf = generate_resume_files(optimized)
 
         # --- Results ---
         st.divider()
@@ -235,26 +226,17 @@ with tab_resume:
                     cat_label = CATEGORY_LABELS.get(kw["category"], kw["category"])
                     st.write(f"{level} **{kw['keyword']}** — {cat_label}")
 
-        # Download buttons
+        # Download button
         st.divider()
         st.subheader("Download Optimized Resume")
-        col_dl1, col_dl2 = st.columns(2)
-        with col_dl1:
-            st.download_button(
-                "📥 Download PDF",
-                data=pdf_buf,
-                file_name="tailored_resume.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
-        with col_dl2:
-            st.download_button(
-                "📥 Download DOCX",
-                data=docx_buf,
-                file_name="tailored_resume.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True,
-            )
+        st.download_button(
+            "📥 Download DOCX (preserves your exact resume design)",
+            data=docx_buf,
+            file_name="tailored_resume.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True,
+        )
+        st.caption("To get PDF: open the .docx in Word or Google Docs → File → Export/Download as PDF")
 
 
 # ===================================================================

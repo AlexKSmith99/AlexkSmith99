@@ -22,6 +22,7 @@ from .formatter import (
     generate_resume_docx,
     generate_resume_pdf,
 )
+from .template_formatter import generate_resume_from_template
 from .optimizer import ResumeOptimizer
 from .resume_data import MASTER_RESUME, resume_to_plain_text
 
@@ -125,23 +126,31 @@ def cmd_resume(jd_text, output_format, output_path, target_score):
     print_changes(changes)
     print_report(final_report, "OPTIMIZED SCORE")
 
-    # Generate output
+    # Generate output — use template-based formatter for .docx (preserves exact design)
     if output_format == "pdf":
+        # Generate .docx from template, user converts to PDF in Word/Google Docs
         if not output_path:
-            output_path = "tailored_resume.pdf"
-        generate_resume_pdf(optimized, output_path)
+            output_path = "tailored_resume.docx"
+        generate_resume_from_template(optimized, output_path)
+        print(f"\n  NOTE: Output is .docx (preserves your exact resume design).")
+        print(f"  To get PDF: open in Word/Google Docs → File → Export/Download as PDF")
     elif output_format == "docx":
         if not output_path:
             output_path = "tailored_resume.docx"
-        generate_resume_docx(optimized, output_path)
+        generate_resume_from_template(optimized, output_path)
     elif output_format == "both":
-        pdf_path = output_path or "tailored_resume.pdf"
-        docx_path = pdf_path.rsplit(".", 1)[0] + ".docx"
-        generate_resume_pdf(optimized, pdf_path)
-        generate_resume_docx(optimized, docx_path)
-        print(f"  Output saved to: {pdf_path} and {docx_path}")
+        docx_path = output_path or "tailored_resume.docx"
+        if docx_path.endswith(".pdf"):
+            docx_path = docx_path.rsplit(".", 1)[0] + ".docx"
+        generate_resume_from_template(optimized, docx_path)
+        print(f"  Output saved to: {docx_path}")
+        print(f"  To get PDF: open in Word/Google Docs → File → Export/Download as PDF")
+        improvement = final_score - baseline_score
+        print(f"  Score: {baseline_score:.1f}% → {final_score:.1f}% (+{improvement:.1f}%)")
         return
 
+    if not output_path:
+        output_path = "tailored_resume.docx"
     print(f"  Output saved to: {output_path}")
     improvement = final_score - baseline_score
     print(f"  Score: {baseline_score:.1f}% → {final_score:.1f}% (+{improvement:.1f}%)")
