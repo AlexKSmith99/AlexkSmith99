@@ -33,7 +33,7 @@ st.set_page_config(
 )
 
 # Version marker — if you see this in the app, the latest code is deployed
-_APP_VERSION = "v3.0-template-pdf"
+_APP_VERSION = "v4.0-aggressive-optimizer"
 
 # ---------------------------------------------------------------------------
 # Styling
