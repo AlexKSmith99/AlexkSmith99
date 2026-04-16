@@ -1,14 +1,10 @@
 """
 Resume optimizer that injects missing JD keywords to achieve 75%+ match.
 
-AGGRESSIVE MODE: Makes significantly more changes to maximize keyword coverage.
-Strategy:
-1. Add ALL missing hard skills to Core Competencies (no cap)
-2. Weave many terms into the professional summary
-3. Inject keywords into experience bullets (higher per-bullet limit)
-4. Use fallback clause injection when natural insertion fails
-5. Enrich ALL role summaries with remaining keywords
-6. Repeat keyword injection across multiple bullets for frequency matching
+Two modes:
+- Rule-based (default): fast, no API key needed, but output can be clunky
+- LLM-based (preferred): uses Claude API to naturally rewrite bullets/summary
+  while preserving all factual content. Produces professional output.
 """
 
 import copy
@@ -21,9 +17,18 @@ from .resume_data import MASTER_RESUME, resume_to_plain_text, find_companies_for
 class ResumeOptimizer:
     """Optimizes a resume to hit a target Jobscan-style match score."""
 
-    def __init__(self, target_score=75):
+    def __init__(self, target_score=75, llm_rewriter=None):
+        """
+        Args:
+            target_score: Target match percentage (default 75)
+            llm_rewriter: Optional LLMRewriter instance. If provided, bullets
+                         and summaries are rewritten via Claude API for
+                         professional-quality output. If None, falls back to
+                         rule-based injection (clunky but free).
+        """
         self.target = target_score
         self.analyzer = JobscanAnalyzer()
+        self.llm = llm_rewriter
         self.changes_log = []
 
     def optimize(self, jd_text):
@@ -67,17 +72,27 @@ class ResumeOptimizer:
         # --- Phase 2: Add ALL missing hard skills to Core Competencies ---
         self._optimize_skills_section(resume, missing)
 
-        # --- Phase 3: Enrich professional summary (generous) ---
-        self._optimize_summary(resume, missing)
+        # --- Phase 3: Enrich professional summary ---
+        if self.llm:
+            self._optimize_summary_llm(resume, missing)
+        else:
+            self._optimize_summary(resume, missing)
 
-        # --- Phase 4: Weave keywords into experience bullets (aggressive) ---
-        self._optimize_bullets(resume, missing)
+        # --- Phase 4: Rewrite experience bullets with keywords ---
+        if self.llm:
+            self._optimize_bullets_llm(resume, missing)
+        else:
+            self._optimize_bullets(resume, missing)
 
-        # --- Phase 5: Enrich role summaries (all jobs) ---
-        self._optimize_role_summaries(resume, missing)
+        # --- Phase 5: Enrich role summaries ---
+        if self.llm:
+            self._optimize_role_summaries_llm(resume, missing)
+        else:
+            self._optimize_role_summaries(resume, missing)
 
-        # --- Phase 6: Second pass — catch anything still missing ---
-        self._second_pass_bullets(resume, jd_keywords)
+        # --- Phase 6: Second pass only in rule-based mode ---
+        if not self.llm:
+            self._second_pass_bullets(resume, jd_keywords)
 
         # Final score
         final_text = resume_to_plain_text(resume)
@@ -493,3 +508,157 @@ class ResumeOptimizer:
                         )
                         injected = True
                         break
+
+    # ==================================================================
+    # LLM-BASED OPTIMIZATION (uses Claude API for natural rewrites)
+    # ==================================================================
+
+    def _optimize_summary_llm(self, resume, missing):
+        """Use Claude to rewrite the summary with target keywords."""
+        # Collect keywords that should go in the summary (soft skills, key concepts)
+        summary_keywords = []
+        for kw, info in missing:
+            if info.get("matched"):
+                continue
+            if info["category"] in ("soft_skills", "industry_terms"):
+                if kw.lower() not in resume["profile"]["summary"].lower():
+                    summary_keywords.append(kw)
+                    info["matched"] = True
+                    if len(summary_keywords) >= 6:
+                        break
+
+        if not summary_keywords:
+            return
+
+        try:
+            new_summary = self.llm.rewrite_summary(
+                resume["profile"]["summary"],
+                summary_keywords,
+                resume["profile"]["title"],
+            )
+            if new_summary and len(new_summary) > 50:
+                resume["profile"]["summary"] = new_summary
+                self.changes_log.append(
+                    f"Rewrote summary with Claude to include: {', '.join(summary_keywords)}"
+                )
+        except Exception as e:
+            self.changes_log.append(f"[LLM error on summary] {str(e)[:100]}")
+
+    def _optimize_bullets_llm(self, resume, missing):
+        """Use Claude to rewrite bullets with target keywords."""
+        remaining = [
+            (kw, info) for kw, info in missing
+            if not info.get("matched") and info["category"] in (
+                "hard_skills", "industry_terms", "action_verbs"
+            )
+        ]
+
+        if not remaining:
+            return
+
+        # Assign keywords to the most relevant bullet across all jobs
+        # Build: {(job_idx, bullet_idx): [keywords]}
+        bullet_assignments = {}
+        for kw, info in remaining:
+            best = self._find_best_bullet(resume, kw)
+            if not best:
+                continue
+            job_idx, bullet_idx, _ = best
+            key = (job_idx, bullet_idx)
+            # Cap at 3 keywords per bullet
+            if len(bullet_assignments.get(key, [])) >= 3:
+                # Find next-best bullet
+                best2 = self._find_next_best_bullet(resume, kw, exclude=key)
+                if best2:
+                    job_idx, bullet_idx, _ = best2
+                    key = (job_idx, bullet_idx)
+                    if len(bullet_assignments.get(key, [])) >= 3:
+                        continue
+                else:
+                    continue
+            bullet_assignments.setdefault(key, []).append(kw)
+            info["matched"] = True
+
+        # Group by job and send one API call per job
+        for job_idx, job in enumerate(resume["experience"]):
+            # Collect bullets-with-keywords for this job
+            job_items = []
+            for bullet_idx, bullet in enumerate(job["bullets"]):
+                key = (job_idx, bullet_idx)
+                kws = bullet_assignments.get(key, [])
+                job_items.append({"bullet": bullet, "keywords": kws})
+
+            # Only call API if there's work to do
+            if not any(item["keywords"] for item in job_items):
+                continue
+
+            job_context = {
+                "company": job["company_short"],
+                "title": job["title"],
+                "summary": job["summary"],
+            }
+
+            try:
+                rewritten = self.llm.rewrite_bullets(job_context, job_items)
+                for bullet_idx, new_text in enumerate(rewritten):
+                    if new_text and new_text != job["bullets"][bullet_idx]:
+                        # Only update if we actually got a rewrite and it had keywords assigned
+                        if job_items[bullet_idx]["keywords"]:
+                            resume["experience"][job_idx]["bullets"][bullet_idx] = new_text
+                            kws = ", ".join(job_items[bullet_idx]["keywords"])
+                            self.changes_log.append(
+                                f"Rewrote {job['company_short']} bullet {bullet_idx + 1} "
+                                f"with Claude (added: {kws})"
+                            )
+            except Exception as e:
+                self.changes_log.append(
+                    f"[LLM error on {job['company_short']} bullets] {str(e)[:100]}"
+                )
+
+    def _optimize_role_summaries_llm(self, resume, missing):
+        """Use Claude to rewrite role summaries with remaining keywords."""
+        remaining = [
+            (kw, info) for kw, info in missing
+            if not info.get("matched") and info["importance"] >= 1.0
+        ]
+        if not remaining:
+            return
+
+        # Group remaining keywords by best-fit job
+        job_additions = {}
+        for kw, info in remaining:
+            companies = find_companies_for_skill(kw)
+            assigned = False
+            for job_idx, job in enumerate(resume["experience"]):
+                if job["company_short"] in companies:
+                    if kw.lower() not in job["summary"].lower():
+                        job_additions.setdefault(job_idx, []).append(kw)
+                        assigned = True
+                        break
+            if not assigned:
+                job_additions.setdefault(0, []).append(kw)
+
+        for job_idx, kws in job_additions.items():
+            if not kws:
+                continue
+            job = resume["experience"][job_idx]
+            try:
+                new_summary = self.llm.rewrite_role_summary(
+                    job["summary"],
+                    kws,
+                    {"company": job["company_short"], "title": job["title"]},
+                )
+                if new_summary and len(new_summary) > 30:
+                    resume["experience"][job_idx]["summary"] = new_summary
+                    for kw in kws:
+                        for _, info in missing:
+                            # no-op; matching handled in final score
+                            pass
+                    self.changes_log.append(
+                        f"Rewrote {job['company_short']} role summary with Claude "
+                        f"(added: {', '.join(kws)})"
+                    )
+            except Exception as e:
+                self.changes_log.append(
+                    f"[LLM error on {job['company_short']} summary] {str(e)[:100]}"
+                )

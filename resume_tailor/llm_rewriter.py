@@ -1,0 +1,187 @@
+"""
+LLM-based resume rewriter using Claude API.
+
+Uses Anthropic's Claude to naturally rewrite resume bullets and summaries
+to include target keywords while preserving all factual details.
+
+Uses prompt caching on the system prompt for cost efficiency.
+"""
+
+import os
+from typing import Optional
+
+try:
+    from anthropic import Anthropic
+    _ANTHROPIC_AVAILABLE = True
+except ImportError:
+    _ANTHROPIC_AVAILABLE = False
+
+
+# Claude Sonnet 4.6 — best balance of quality, speed, and cost for this use case
+_MODEL = "claude-sonnet-4-5"
+
+# System prompt for the rewriter — cached for cost efficiency
+_REWRITE_SYSTEM_PROMPT = """You are an expert resume writer specializing in ATS-optimized content.
+
+Your job is to rewrite resume bullets and summaries to naturally incorporate target keywords from a job description, while preserving all factual content.
+
+CRITICAL RULES:
+1. PRESERVE all metrics, numbers, company names, and factual achievements exactly (e.g., "25 high-opportunity neighborhoods", "$200K budget", "20% conversion rate", "7 counties")
+2. PRESERVE the core action and outcome of each bullet
+3. Keep bullets approximately the same length (no longer than 130% of the original)
+4. Only add keywords that fit naturally in context — skip any that would sound forced or fabricated
+5. NEVER invent new accomplishments, tools, or metrics that aren't hinted at in the original
+6. Use strong action verbs and professional, active-voice language
+7. Maintain ATS-readability (no fancy formatting, just clean prose)
+8. When a keyword is a tool/technology, integrate it where it makes contextual sense (e.g., alongside other tools used)
+9. When a keyword is a soft skill or concept, weave it into the description of how the work was done
+10. Output ONLY the rewritten text — no preamble, no explanations, no quotation marks, no bullet markers
+
+You are writing for a data analyst with experience at Healthfirst (health insurance), Canon USA (cameras/consumer electronics), and Razor USA (electric scooters)."""
+
+
+class LLMRewriter:
+    """Wraps Anthropic's Claude for resume bullet rewriting."""
+
+    def __init__(self, api_key: Optional[str] = None):
+        if not _ANTHROPIC_AVAILABLE:
+            raise ImportError(
+                "anthropic package not installed. Run: pip install anthropic"
+            )
+        key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
+            raise ValueError(
+                "Anthropic API key not provided. Pass api_key= or set "
+                "ANTHROPIC_API_KEY environment variable."
+            )
+        self.client = Anthropic(api_key=key)
+
+    def rewrite_bullets(self, job_context: dict, bullets_with_keywords: list) -> list:
+        """
+        Rewrite all bullets for a single job in one API call.
+
+        Args:
+            job_context: dict with 'company', 'title', 'summary' keys
+            bullets_with_keywords: list of dicts with 'bullet' and 'keywords' keys
+
+        Returns:
+            list of rewritten bullet strings (same length as input, empty for skipped)
+        """
+        if not bullets_with_keywords:
+            return []
+
+        # Build the user message
+        lines = [
+            f"Company: {job_context['company']}",
+            f"Role: {job_context['title']}",
+            f"Role summary: {job_context['summary']}",
+            "",
+            "Rewrite each of the following bullets to naturally incorporate the listed keywords. "
+            "Return ONLY the rewritten bullets, one per line, numbered, in the same order. "
+            "If no natural way to incorporate the keywords exists, return the original bullet unchanged.",
+            "",
+        ]
+        for i, item in enumerate(bullets_with_keywords, 1):
+            lines.append(f"BULLET {i}:")
+            lines.append(f"Original: {item['bullet']}")
+            kw_list = ", ".join(item['keywords']) if item['keywords'] else "(none — keep as-is)"
+            lines.append(f"Keywords to incorporate: {kw_list}")
+            lines.append("")
+
+        lines.append("Output format: Return numbered rewrites on separate lines, e.g.:")
+        lines.append("1. [rewritten bullet 1]")
+        lines.append("2. [rewritten bullet 2]")
+
+        user_message = "\n".join(lines)
+
+        message = self.client.messages.create(
+            model=_MODEL,
+            max_tokens=2000,
+            system=[
+                {
+                    "type": "text",
+                    "text": _REWRITE_SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        response_text = message.content[0].text.strip()
+        return self._parse_numbered_response(response_text, len(bullets_with_keywords))
+
+    def rewrite_summary(self, original_summary: str, keywords: list,
+                         job_title: str) -> str:
+        """Rewrite the professional summary to include target keywords."""
+        if not keywords:
+            return original_summary
+
+        kw_list = ", ".join(keywords)
+        user_message = (
+            f"Target role title: {job_title}\n\n"
+            f"Original professional summary:\n{original_summary}\n\n"
+            f"Keywords to naturally incorporate: {kw_list}\n\n"
+            f"Rewrite the summary to naturally include these keywords while keeping it "
+            f"concise (similar length to original, max 3 sentences). Preserve the core "
+            f"message and tone. Return only the rewritten summary with no preamble."
+        )
+
+        message = self.client.messages.create(
+            model=_MODEL,
+            max_tokens=500,
+            system=[
+                {
+                    "type": "text",
+                    "text": _REWRITE_SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        return message.content[0].text.strip()
+
+    def rewrite_role_summary(self, original: str, keywords: list,
+                              job_context: dict) -> str:
+        """Rewrite a role summary paragraph to include target keywords."""
+        if not keywords:
+            return original
+
+        kw_list = ", ".join(keywords)
+        user_message = (
+            f"Company: {job_context['company']}\n"
+            f"Role: {job_context['title']}\n\n"
+            f"Original role description:\n{original}\n\n"
+            f"Keywords to naturally incorporate: {kw_list}\n\n"
+            f"Rewrite the role description to naturally include these keywords, keeping "
+            f"it concise (similar length). Preserve all factual content about what the "
+            f"role involved. Return only the rewritten description with no preamble."
+        )
+
+        message = self.client.messages.create(
+            model=_MODEL,
+            max_tokens=500,
+            system=[
+                {
+                    "type": "text",
+                    "text": _REWRITE_SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        return message.content[0].text.strip()
+
+    @staticmethod
+    def _parse_numbered_response(text: str, expected_count: int) -> list:
+        """Parse a numbered response like '1. foo\\n2. bar' into a list."""
+        import re
+        # Match lines like "1. ..." or "1) ..."
+        parts = re.split(r"^\s*\d+[.)]\s*", text, flags=re.MULTILINE)
+        # First part is before "1." (empty), actual items start at index 1
+        items = [p.strip() for p in parts[1:] if p.strip()]
+        # Pad with empty strings if we got fewer than expected
+        while len(items) < expected_count:
+            items.append("")
+        return items[:expected_count]

@@ -7,6 +7,7 @@ Paste a job description, get an optimized resume and tailored cover letter.
 
 import copy
 import io
+import os
 import streamlit as st
 
 from resume_tailor.analyzer import JobscanAnalyzer, analyze_match
@@ -22,6 +23,12 @@ from resume_tailor.template_formatter import (
     generate_resume_pdf_from_template,
 )
 
+try:
+    from resume_tailor.llm_rewriter import LLMRewriter
+    _LLM_AVAILABLE = True
+except ImportError:
+    _LLM_AVAILABLE = False
+
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -33,7 +40,7 @@ st.set_page_config(
 )
 
 # Version marker — if you see this in the app, the latest code is deployed
-_APP_VERSION = "v4.0-aggressive-optimizer"
+_APP_VERSION = "v5.0-claude-llm"
 
 # ---------------------------------------------------------------------------
 # Styling
@@ -159,7 +166,40 @@ tab_resume, tab_cover_letter, tab_analyze = st.tabs([
 # ===================================================================
 with tab_resume:
     st.header("Resume Optimizer")
-    st.write("Paste a job description below. The tool will analyze your resume against it, inject missing keywords, and generate an optimized version.")
+    st.write("Paste a job description below. The tool will analyze your resume against it and generate a tailored version.")
+
+    # API key input — the LLM mode is what produces professional output
+    with st.expander("🤖 Claude API Settings (recommended for quality)", expanded=True):
+        st.markdown("""
+        **Without a Claude API key:** Rule-based injection is used. Faster and free,
+        but output can be grammatically awkward.
+
+        **With a Claude API key:** Bullets and summary are rewritten naturally by
+        Claude Sonnet 4.5. Professional-quality output. Costs ~$0.01-0.03 per resume.
+
+        Get an API key at: [console.anthropic.com](https://console.anthropic.com)
+        """)
+        # Try env variable / Streamlit secrets first
+        default_key = ""
+        try:
+            default_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        except Exception:
+            pass
+        if not default_key:
+            default_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+        api_key = st.text_input(
+            "Anthropic API Key",
+            value=default_key,
+            type="password",
+            placeholder="sk-ant-...",
+            help="Your API key is only used in this session and is never stored or logged.",
+        )
+        use_llm = st.checkbox(
+            "Use Claude to rewrite bullets (recommended)",
+            value=bool(api_key),
+            disabled=not api_key,
+        )
 
     jd_text_resume = st.text_area(
         "Job Description",
@@ -175,13 +215,23 @@ with tab_resume:
         output_format = st.selectbox("Output format", ["PDF", "DOCX", "Both"])
 
     if st.button("🚀 Optimize Resume", type="primary", disabled=not jd_text_resume.strip()):
-        with st.spinner("Analyzing and optimizing..."):
+        with st.spinner("Analyzing and optimizing..." +
+                         (" (Claude is rewriting bullets — 10-30 seconds...)" if use_llm else "")):
             # Baseline
             resume_text = resume_to_plain_text()
             _, _, baseline_report = analyze_match(resume_text, jd_text_resume)
 
+            # Set up LLM rewriter if enabled
+            llm_rewriter = None
+            if use_llm and api_key and _LLM_AVAILABLE:
+                try:
+                    llm_rewriter = LLMRewriter(api_key=api_key)
+                except Exception as e:
+                    st.error(f"Failed to initialize Claude API: {e}")
+                    llm_rewriter = None
+
             # Optimize
-            optimizer = ResumeOptimizer(target_score=target_score)
+            optimizer = ResumeOptimizer(target_score=target_score, llm_rewriter=llm_rewriter)
             optimized, baseline_score, final_score, final_report, changes = optimizer.optimize(jd_text_resume)
 
             # Generate files
