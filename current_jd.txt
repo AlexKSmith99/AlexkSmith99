@@ -1,0 +1,28 @@
+We are seeking a strong Data Analyst with preferably prior industry experience in FinTech and the B2C/DTC domain. You will play a crucial role in leveraging data to drive strategic decisions, optimize business performance, optimize our customer interactions, and ensure a frictionless user experience. You will leverage advanced analytics to identify trends, measure performance, and provide strategic insights that support data-driven decision-making across the organization.
+
+Responsibilities
+
+Analyze large datasets to identify trends, insights, and opportunities that drive business growth.
+Develop and maintain dashboards and reports to track key performance indicators (KPIs) across various business functions.
+Partner with cross-functional teams, including Product, Engineering, Marketing, and Customer Success, to implement data-driven solutions.
+Identify new & iterative high-impact opportunities to further scale or improve unit economic efficiency
+Provide actionable insights to leadership on business performance, customer behavior, and operational trends.
+Ensure data integrity, accuracy, and governance across multiple data sources and platforms.
+
+About You
+
+3+ years of experience in data analytics, preferably in fintech, banking, or a technology-driven industry.
+Strong proficiency in SQL and Python for data analysis and manipulation.
+Experience with data visualization tools such as Tableau, Looker, or Power BI.
+Familiarity with data warehousing and transformation tools such as dbt is a plus.
+Excellent problem-solving skills and the ability to translate complex data into actionable insights.
+Strong communication skills to effectively collaborate with technical and non-technical stakeholders.
+
+Additional Skills And Qualifications
+
+Experience with Looker or other business intelligence tools is preferred.
+Exposure to dimensional modeling concepts to power meaningful analytics.
+Ability to visualize data effectively and communicate insights clearly and concisely.
+Experience modeling data using dbt.
+Familiarity with machine learning techniques and predictive analytics is a plus.
+Experience working with Fintech, banks or a B2C company.

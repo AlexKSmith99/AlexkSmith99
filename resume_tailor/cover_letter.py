@@ -59,6 +59,11 @@ _END_HEADERS = [
     r"day[- ]to[- ]day",
     r"equal opportunity",
     r"eeo",
+    r"additional skills",
+    r"additional qualifications",
+    r"nice[- ]to[- ]have",
+    r"preferred",
+    r"bonus",
 ]
 
 
@@ -108,10 +113,17 @@ def extract_qualifications(jd_text, max_bullets=4):
                         return bullets[:max_bullets]
 
         # Extract bullet content
-        if in_qual_section and _is_bullet(stripped):
-            bullet_text = _clean_bullet(stripped)
-            if len(bullet_text) > 15:  # Skip very short lines
-                bullets.append(bullet_text)
+        if in_qual_section:
+            if _is_bullet(stripped):
+                bullet_text = _clean_bullet(stripped)
+                if len(bullet_text) > 15:
+                    bullets.append(bullet_text)
+                    if len(bullets) >= max_bullets:
+                        return bullets
+            elif len(stripped) > 20 and not stripped.endswith(":"):
+                # Plain text line in a qualification section (no bullet marker)
+                # Many JDs list requirements as plain sentences per line
+                bullets.append(stripped)
                 if len(bullets) >= max_bullets:
                     return bullets
 

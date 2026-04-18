@@ -28,7 +28,7 @@ Your job is to rewrite resume bullets and summaries to naturally incorporate tar
 CRITICAL RULES:
 1. PRESERVE all metrics, numbers, company names, and factual achievements exactly (e.g., "25 high-opportunity neighborhoods", "$200K budget", "20% conversion rate", "7 counties")
 2. PRESERVE the core action and outcome of each bullet
-3. Keep bullets approximately the same length (no longer than 130% of the original)
+3. BULLET LENGTH LIMIT: Each bullet MUST be no longer than approximately 190 characters (about 2 printed lines in a standard resume). If adding a keyword would push past this limit, either find a more concise way to phrase it or skip the keyword. Conciseness is critical.
 4. Only add keywords that fit naturally in context — skip any that would sound forced or fabricated
 5. NEVER invent new accomplishments, tools, or metrics that aren't in the original
 6. Use strong action verbs and professional, active-voice language
@@ -84,6 +84,8 @@ class LLMRewriter:
             f"Role summary: {job_context['summary']}",
             "",
             "Rewrite each of the following bullets to naturally incorporate the listed keywords. "
+            "IMPORTANT: Each bullet MUST be MAX ~190 characters (2 printed lines). Be concise. "
+            "If the original is already near the limit, trim filler words to make room for keywords. "
             "Return ONLY the rewritten bullets, one per line, numbered, in the same order. "
             "If no natural way to incorporate the keywords exists, return the original bullet unchanged.",
             "",
