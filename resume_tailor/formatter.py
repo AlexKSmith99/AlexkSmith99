@@ -22,7 +22,7 @@ from docx import Document
 from docx.shared import Inches, Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import nsdecls
+from docx.oxml.ns import nsdecls, qn
 from docx.oxml import parse_xml
 
 
@@ -528,115 +528,120 @@ def generate_cover_letter_pdf(cl_data, output_path):
 # COVER LETTER DOCX
 # ===================================================================
 def generate_cover_letter_docx(cl_data, output_path):
-    """Generate a cover letter DOCX with formatted table."""
+    """Generate a cover letter DOCX — Calibri 11, no-border two-column layout."""
     doc = Document()
 
     section = doc.sections[0]
-    section.top_margin = Cm(1.5)
-    section.bottom_margin = Cm(1.5)
-    section.left_margin = Cm(1.5)
-    section.right_margin = Cm(1.5)
+    section.top_margin = Cm(2.54)
+    section.bottom_margin = Cm(2.54)
+    section.left_margin = Cm(2.54)
+    section.right_margin = Cm(2.54)
+
+    # Set default font to Calibri 11
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
+    style.paragraph_format.space_after = Pt(0)
+    style.paragraph_format.space_before = Pt(0)
 
     # Date
     p = doc.add_paragraph(cl_data["date"])
-    for run in p.runs:
-        run.font.size = Pt(10)
-    p.paragraph_format.space_after = Pt(8)
+    p.paragraph_format.space_after = Pt(11)
 
     # Dear Hiring Manager
     p = doc.add_paragraph("Dear Hiring Manager,")
-    for run in p.runs:
-        run.font.size = Pt(10)
-    p.paragraph_format.space_after = Pt(8)
+    p.paragraph_format.space_after = Pt(11)
 
     # Intro
     p = doc.add_paragraph(cl_data["intro_paragraph"])
-    for run in p.runs:
-        run.font.size = Pt(9.5)
     p.paragraph_format.space_after = Pt(6)
 
     # Background
     p = doc.add_paragraph(cl_data["background_paragraph"])
-    for run in p.runs:
-        run.font.size = Pt(9.5)
     p.paragraph_format.space_after = Pt(6)
 
     # Table intro
     p = doc.add_paragraph(
         "Here is a breakdown of my experience vs. your requirements:"
     )
-    for run in p.runs:
-        run.font.size = Pt(9.5)
-    p.paragraph_format.space_after = Pt(6)
+    p.paragraph_format.space_after = Pt(8)
 
-    # Table
+    # Two-column layout with NO borders — use a table but remove all borders
     num_rows = len(cl_data["jd_bullets"]) + 1  # +1 for header
     table = doc.add_table(rows=num_rows, cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    table.style = "Table Grid"
 
-    # Header row
+    # Remove ALL borders from the table
+    from docx.oxml import OxmlElement
+    tbl = table._tbl
+    tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
+    borders = OxmlElement("w:tblBorders")
+    for border_name in ["top", "left", "bottom", "right", "insideH", "insideV"]:
+        border = OxmlElement(f"w:{border_name}")
+        border.set(qn("w:val"), "none")
+        border.set(qn("w:sz"), "0")
+        border.set(qn("w:space"), "0")
+        border.set(qn("w:color"), "auto")
+        borders.append(border)
+    tblPr.append(borders)
+
+    # Header row — bold + underlined
     header_cells = table.rows[0].cells
     for i, text in enumerate(
         [cl_data["table_header_left"], cl_data["table_header_right"]]
     ):
         cell = header_cells[i]
-        cell.text = ""
         p = cell.paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.clear()
         run = p.add_run(text)
         run.bold = True
-        run.font.size = Pt(9)
-        run.font.color.rgb = RGBColor(255, 255, 255)
-        # Dark background
-        shading = parse_xml(
-            f'<w:shd {nsdecls("w")} w:fill="323232" w:val="clear"/>'
-        )
-        cell._tc.get_or_add_tcPr().append(shading)
+        run.underline = True
+        run.font.size = Pt(11)
+        run.font.name = "Calibri"
+        p.paragraph_format.space_after = Pt(4)
 
-    # Data rows
+    # Data rows — plain bullets
     for row_idx, (jd_bullet, exp_bullet) in enumerate(
         zip(cl_data["jd_bullets"], cl_data["exp_bullets"]), start=1
     ):
         row = table.rows[row_idx]
+
         # JD bullet
         cell = row.cells[0]
-        cell.text = ""
         p = cell.paragraphs[0]
+        p.clear()
         run = p.add_run(jd_bullet)
-        run.font.size = Pt(8.5)
+        run.font.size = Pt(11)
+        run.font.name = "Calibri"
+        p.paragraph_format.space_after = Pt(4)
 
         # Experience bullet
         cell = row.cells[1]
-        cell.text = ""
         p = cell.paragraphs[0]
+        p.clear()
         run = p.add_run(exp_bullet)
-        run.font.size = Pt(8.5)
+        run.font.size = Pt(11)
+        run.font.name = "Calibri"
+        p.paragraph_format.space_after = Pt(4)
 
-    # Set column widths
+    # Set column widths (roughly equal)
     for row in table.rows:
-        row.cells[0].width = Cm(9)
-        row.cells[1].width = Cm(9)
+        row.cells[0].width = Cm(8.5)
+        row.cells[1].width = Cm(8.5)
 
     # Spacing after table
     p = doc.add_paragraph()
-    p.paragraph_format.space_before = Pt(12)
+    p.paragraph_format.space_before = Pt(8)
 
     # Closing paragraph
     p = doc.add_paragraph(cl_data["closing_paragraph"])
-    for run in p.runs:
-        run.font.size = Pt(9.5)
-    p.paragraph_format.space_after = Pt(8)
+    p.paragraph_format.space_after = Pt(11)
 
     # Sign off
     p = doc.add_paragraph(cl_data["sign_off"])
-    for run in p.runs:
-        run.font.size = Pt(10)
     p.paragraph_format.space_after = Pt(2)
 
     p = doc.add_paragraph(cl_data["name"])
-    for run in p.runs:
-        run.font.size = Pt(10)
 
     doc.save(output_path)
     return output_path
