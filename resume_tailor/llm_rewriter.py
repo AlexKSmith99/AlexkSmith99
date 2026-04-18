@@ -28,7 +28,7 @@ Your job is to rewrite resume bullets and summaries to naturally incorporate tar
 CRITICAL RULES:
 1. PRESERVE all metrics, numbers, company names, and factual achievements exactly (e.g., "25 high-opportunity neighborhoods", "$200K budget", "20% conversion rate", "7 counties")
 2. PRESERVE the core action and outcome of each bullet
-3. ABSOLUTE BULLET LENGTH LIMIT: Each bullet MUST be UNDER 220 characters. Count the characters. If the rewrite exceeds 220 characters, you MUST shorten it — cut filler words, remove redundant phrases, use shorter synonyms, or drop the lowest-priority keyword. NEVER exceed 220 characters per bullet. This is the most important formatting rule.
+3. ABSOLUTE BULLET LENGTH LIMIT: Each bullet MUST be UNDER 210 characters. Count the characters carefully. If the rewrite exceeds 210 characters, you MUST shorten it — cut filler words, use shorter synonyms, remove redundant phrases, or drop the lowest-priority keyword. If the ORIGINAL bullet already exceeds 210 characters, you must shorten it too while preserving the key achievement. NEVER exceed 210 characters per bullet. This is the most important formatting rule.
 4. ROLE SUMMARY/DESCRIPTION LENGTH LIMIT: Role summaries and descriptions MUST be UNDER 330 characters (approximately 3 printed lines). Shorten if needed.
 4. Only add keywords that fit naturally in context — skip any that would sound forced or fabricated
 5. NEVER invent new accomplishments, tools, or metrics that aren't in the original
@@ -85,8 +85,8 @@ class LLMRewriter:
             f"Role summary: {job_context['summary']}",
             "",
             "Rewrite each of the following bullets to naturally incorporate the listed keywords. "
-            "ABSOLUTE RULE: Each bullet MUST be UNDER 220 characters. Count them. No exceptions. "
-            "If the original is already near 220 chars, trim filler words to make room for keywords. "
+            "ABSOLUTE RULE: Each bullet MUST be UNDER 210 characters. Count them carefully. No exceptions. "
+            "If the original already exceeds 210 chars, you MUST shorten it while preserving the key metric/achievement. "
             "Return ONLY the rewritten bullets, one per line, numbered, in the same order. "
             "If no natural way to incorporate the keywords exists, return the original bullet unchanged.",
             "",
@@ -120,15 +120,37 @@ class LLMRewriter:
         response_text = message.content[0].text.strip()
         results = self._parse_numbered_response(response_text, len(bullets_with_keywords))
 
-        # Hard enforcement: if any bullet exceeds 220 chars, fall back to original
-        MAX_BULLET_CHARS = 220
+        # Hard enforcement: if any bullet exceeds 210 chars, ask Claude to shorten
+        MAX_BULLET_CHARS = 210
         for i, (rewritten, original) in enumerate(zip(results, bullets_with_keywords)):
             if len(rewritten) > MAX_BULLET_CHARS:
-                # Try to use original if it's shorter, otherwise keep the long rewrite
-                if len(original["bullet"]) <= MAX_BULLET_CHARS:
-                    results[i] = original["bullet"]
+                # Ask Claude specifically to shorten this one bullet
+                try:
+                    shortened = self._shorten_bullet(rewritten, MAX_BULLET_CHARS)
+                    if len(shortened) <= MAX_BULLET_CHARS:
+                        results[i] = shortened
+                except Exception:
+                    pass
 
         return results
+
+    def _shorten_bullet(self, bullet, max_chars):
+        """Ask Claude to shorten a single bullet to fit the character limit."""
+        message = self.client.messages.create(
+            model=_MODEL,
+            max_tokens=300,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"This resume bullet is {len(bullet)} characters. "
+                    f"Shorten it to UNDER {max_chars} characters while preserving "
+                    f"the key achievement and any metrics/numbers. Be concise. "
+                    f"Return ONLY the shortened bullet, nothing else.\n\n"
+                    f"Bullet: {bullet}"
+                ),
+            }],
+        )
+        return message.content[0].text.strip()
 
     def rewrite_summary(self, original_summary: str, keywords: list,
                          job_title: str) -> str:
