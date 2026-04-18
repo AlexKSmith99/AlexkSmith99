@@ -168,7 +168,7 @@ with tab_resume:
     st.header("Resume Optimizer")
     st.write("Paste a job description below. The tool will analyze your resume against it and generate a tailored version.")
 
-    # API key input — the LLM mode is what produces professional output
+    # API key input
     with st.expander("🤖 Claude API Settings (recommended for quality)", expanded=True):
         st.markdown("""
         **Without a Claude API key:** Rule-based injection is used. Faster and free,
@@ -179,7 +179,6 @@ with tab_resume:
 
         Get an API key at: [console.anthropic.com](https://console.anthropic.com)
         """)
-        # Try env variable / Streamlit secrets first
         default_key = ""
         try:
             default_key = st.secrets.get("ANTHROPIC_API_KEY", "")
@@ -201,6 +200,23 @@ with tab_resume:
             disabled=not api_key,
         )
 
+    # Resume input
+    with st.expander("📝 Resume (click to view/edit)", expanded=False):
+        st.caption(
+            "Your default resume is pre-loaded. You can paste a different resume here "
+            "for scoring/analysis. Formatted .docx output uses your base resume template."
+        )
+        default_resume_text = resume_to_plain_text()
+        resume_input = st.text_area(
+            "Resume Text",
+            value=default_resume_text,
+            height=400,
+            key="resume_input",
+        )
+        using_custom_resume = resume_input.strip() != default_resume_text.strip()
+        if using_custom_resume:
+            st.info("Using your pasted resume for scoring. Formatted .docx output will still use your base resume template.")
+
     jd_text_resume = st.text_area(
         "Job Description",
         height=300,
@@ -215,11 +231,13 @@ with tab_resume:
         output_format = st.selectbox("Output format", ["PDF", "DOCX", "Both"])
 
     if st.button("🚀 Optimize Resume", type="primary", disabled=not jd_text_resume.strip()):
+        # Use custom resume text for scoring if pasted
+        scoring_resume_text = resume_input.strip() if resume_input.strip() else default_resume_text
+
         with st.spinner("Analyzing and optimizing..." +
                          (" (Claude is rewriting bullets — 10-30 seconds...)" if use_llm else "")):
-            # Baseline
-            resume_text = resume_to_plain_text()
-            _, _, baseline_report = analyze_match(resume_text, jd_text_resume)
+            # Baseline — use the pasted resume text for scoring
+            _, _, baseline_report = analyze_match(scoring_resume_text, jd_text_resume)
 
             # Set up LLM rewriter if enabled
             llm_rewriter = None
@@ -409,7 +427,18 @@ with tab_cover_letter:
 # ===================================================================
 with tab_analyze:
     st.header("Analyze Resume vs JD")
-    st.write("Score your current resume against a job description — no optimization, just the raw analysis.")
+    st.write("Score a resume against a job description — no optimization, just the raw analysis.")
+
+    # Resume input for analyze tab
+    with st.expander("📝 Resume (click to view/edit)", expanded=False):
+        st.caption("Your default resume is pre-loaded. Paste a different resume to score it instead.")
+        default_resume_analyze = resume_to_plain_text()
+        resume_input_analyze = st.text_area(
+            "Resume Text",
+            value=default_resume_analyze,
+            height=400,
+            key="resume_input_analyze",
+        )
 
     jd_text_analyze = st.text_area(
         "Job Description",
@@ -420,8 +449,8 @@ with tab_analyze:
 
     if st.button("🔍 Analyze", type="primary", disabled=not jd_text_analyze.strip()):
         with st.spinner("Analyzing..."):
-            resume_text = resume_to_plain_text()
-            _, jd_keywords, report = analyze_match(resume_text, jd_text_analyze)
+            analyze_resume_text = resume_input_analyze.strip() if resume_input_analyze.strip() else default_resume_analyze
+            _, jd_keywords, report = analyze_match(analyze_resume_text, jd_text_analyze)
 
         st.divider()
 
