@@ -28,7 +28,8 @@ Your job is to rewrite resume bullets and summaries to naturally incorporate tar
 CRITICAL RULES:
 1. PRESERVE all metrics, numbers, company names, and factual achievements exactly (e.g., "25 high-opportunity neighborhoods", "$200K budget", "20% conversion rate", "7 counties")
 2. PRESERVE the core action and outcome of each bullet
-3. BULLET LENGTH LIMIT: Each bullet MUST be no longer than approximately 190 characters (about 2 printed lines in a standard resume). If adding a keyword would push past this limit, either find a more concise way to phrase it or skip the keyword. Conciseness is critical.
+3. ABSOLUTE BULLET LENGTH LIMIT: Each bullet MUST be UNDER 220 characters. Count the characters. If the rewrite exceeds 220 characters, you MUST shorten it — cut filler words, remove redundant phrases, use shorter synonyms, or drop the lowest-priority keyword. NEVER exceed 220 characters per bullet. This is the most important formatting rule.
+4. ROLE SUMMARY/DESCRIPTION LENGTH LIMIT: Role summaries and descriptions MUST be UNDER 330 characters (approximately 3 printed lines). Shorten if needed.
 4. Only add keywords that fit naturally in context — skip any that would sound forced or fabricated
 5. NEVER invent new accomplishments, tools, or metrics that aren't in the original
 6. Use strong action verbs and professional, active-voice language
@@ -84,8 +85,8 @@ class LLMRewriter:
             f"Role summary: {job_context['summary']}",
             "",
             "Rewrite each of the following bullets to naturally incorporate the listed keywords. "
-            "IMPORTANT: Each bullet MUST be MAX ~190 characters (2 printed lines). Be concise. "
-            "If the original is already near the limit, trim filler words to make room for keywords. "
+            "ABSOLUTE RULE: Each bullet MUST be UNDER 220 characters. Count them. No exceptions. "
+            "If the original is already near 220 chars, trim filler words to make room for keywords. "
             "Return ONLY the rewritten bullets, one per line, numbered, in the same order. "
             "If no natural way to incorporate the keywords exists, return the original bullet unchanged.",
             "",
@@ -117,7 +118,17 @@ class LLMRewriter:
         )
 
         response_text = message.content[0].text.strip()
-        return self._parse_numbered_response(response_text, len(bullets_with_keywords))
+        results = self._parse_numbered_response(response_text, len(bullets_with_keywords))
+
+        # Hard enforcement: if any bullet exceeds 220 chars, fall back to original
+        MAX_BULLET_CHARS = 220
+        for i, (rewritten, original) in enumerate(zip(results, bullets_with_keywords)):
+            if len(rewritten) > MAX_BULLET_CHARS:
+                # Try to use original if it's shorter, otherwise keep the long rewrite
+                if len(original["bullet"]) <= MAX_BULLET_CHARS:
+                    results[i] = original["bullet"]
+
+        return results
 
     def rewrite_summary(self, original_summary: str, keywords: list,
                          job_title: str) -> str:
@@ -162,9 +173,10 @@ class LLMRewriter:
             f"Role: {job_context['title']}\n\n"
             f"Original role description:\n{original}\n\n"
             f"Keywords to naturally incorporate: {kw_list}\n\n"
-            f"Rewrite the role description to naturally include these keywords, keeping "
-            f"it concise (similar length). Preserve all factual content about what the "
-            f"role involved. Return only the rewritten description with no preamble."
+            f"Rewrite the role description to naturally include these keywords. "
+            f"MUST be UNDER 330 characters (3 printed lines max). Be concise. "
+            f"Preserve factual content about what the role involved. "
+            f"Return only the rewritten description with no preamble."
         )
 
         message = self.client.messages.create(
@@ -180,7 +192,11 @@ class LLMRewriter:
             messages=[{"role": "user", "content": user_message}],
         )
 
-        return message.content[0].text.strip()
+        result = message.content[0].text.strip()
+        MAX_SUMMARY_CHARS = 330
+        if len(result) > MAX_SUMMARY_CHARS and len(original) <= MAX_SUMMARY_CHARS:
+            return original
+        return result
 
     @staticmethod
     def _parse_numbered_response(text: str, expected_count: int) -> list:
