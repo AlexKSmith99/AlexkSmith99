@@ -69,8 +69,8 @@ class ResumeOptimizer:
         # --- Phase 1: Update profile title ---
         self._optimize_title(resume, jd_text, missing)
 
-        # --- Phase 2: Add ALL missing hard skills to Core Competencies ---
-        self._optimize_skills_section(resume, missing)
+        # --- Phase 2: Curate 9 Core Competencies for max JD match ---
+        self._optimize_skills_section(resume, missing, jd_kw_baseline)
 
         # --- Phase 3: Enrich professional summary ---
         if self.llm:
@@ -125,32 +125,181 @@ class ResumeOptimizer:
                         break
 
     # ------------------------------------------------------------------
-    # Phase 2: Core Competencies — NO CAP, add all missing hard skills
+    # Phase 2: Core Competencies — MAX 9, prioritize JD matches
     # ------------------------------------------------------------------
-    def _optimize_skills_section(self, resume, missing):
-        """Add ALL missing hard skills to Core Competencies."""
-        current_skills = resume["profile"]["core_competencies"]
-        current_lower = {s.lower() for s in current_skills}
-        for s in list(current_lower):
-            paren_match = re.search(r"\(([^)]+)\)", s)
-            if paren_match:
-                for item in paren_match.group(1).split(","):
-                    current_lower.add(item.strip().lower())
+    def _optimize_skills_section(self, resume, missing, all_jd_keywords=None):
+        """
+        Curate exactly 9 Core Competencies that maximize JD keyword matching.
 
+        Priority order:
+        1. SQL (always)
+        2. The BI/visualization tool mentioned in JD (Tableau, Looker, Power BI, etc.)
+        3. The data warehouse mentioned in JD (Snowflake, BigQuery, Redshift, etc.)
+        4. Fill remaining 6 slots with highest-importance JD hard skills
+        5. Displaced skills get offloaded to bullets/summaries later
+        """
+        MAX_SKILLS = 9
+        jd_keywords = {kw: info for kw, info in missing}
+
+        # Build the full pool: original skills + missing JD hard skills
+        original_skills = list(resume["profile"]["core_competencies"])
+
+        # Collect all JD hard skills (both matched and missing)
+        jd_hard_skills = []
         for kw, info in missing:
-            if info["category"] != "hard_skills":
-                continue
+            if info["category"] == "hard_skills":
+                jd_hard_skills.append((kw, info["importance"]))
+
+        # --- Step 1: Identify staples ---
+        # SQL is always slot 1, Python always slot 2
+        staples = ["SQL", "Python (Pandas, Numpy)"]
+
+        # Find the PRIMARY BI tool from JD (prefer ones the user already has)
+        bi_tools_priority = ["Tableau", "Power BI", "Looker", "Looker Studio",
+                             "Hex", "Mode Analytics", "Metabase", "Qlik"]
+        jd_text_lower = " ".join(kw.lower() for kw, _ in jd_hard_skills)
+        # Also check original skills for BI tools already in resume
+        all_jd_kw_lower = set(kw.lower() for kw, _ in jd_hard_skills)
+        # First: BI tool user already has that's also in JD
+        bi_found = False
+        for tool in bi_tools_priority:
+            tool_in_jd = tool.lower() in all_jd_kw_lower or any(
+                tool.lower() in orig.lower() for orig in original_skills
+                if any(tool.lower() in kw.lower() for kw, _ in jd_hard_skills)
+            )
+            tool_in_resume = any(tool.lower() in orig.lower() for orig in original_skills)
+            if tool_in_resume:
+                staples.append(tool)
+                bi_found = True
+                break
+        # If user doesn't have any JD BI tool, add the first one from JD
+        if not bi_found:
+            for tool in bi_tools_priority:
+                if tool.lower() in all_jd_kw_lower:
+                    staples.append(tool)
+                    bi_found = True
+                    break
+        if not bi_found:
+            staples.append("Tableau")
+
+        # Find the PRIMARY data warehouse from JD
+        warehouses = ["Snowflake", "BigQuery", "Redshift", "Databricks", "Synapse"]
+        wh_found = False
+        for wh in warehouses:
+            wh_in_resume = any(wh.lower() in orig.lower() for orig in original_skills)
+            wh_in_jd = wh.lower() in all_jd_kw_lower
+            if wh_in_resume and wh_in_jd:
+                staples.append(wh)
+                wh_found = True
+                break
+        if not wh_found:
+            for wh in warehouses:
+                if wh.lower() in all_jd_kw_lower:
+                    staples.append(wh)
+                    wh_found = True
+                    break
+        if not wh_found:
+            staples.append("Snowflake")
+
+        # --- Step 2: Build ranked pool of remaining candidates ---
+        staples_lower = {s.lower() for s in staples}
+        # Expand compound entries
+        for s in list(staples_lower):
+            paren = re.search(r"\(([^)]+)\)", s)
+            if paren:
+                for item in paren.group(1).split(","):
+                    staples_lower.add(item.strip().lower())
+
+        # Pool = JD hard skills (missing) + original skills, ranked by importance
+        candidates = []
+        seen_lower = set(staples_lower)
+
+        # Combine both pools: missing JD skills + original skills already in JD
+        # Original skills that ARE in JD get high priority (already matched = free)
+        all_candidates = []
+
+        # JD missing hard skills
+        for kw, importance in jd_hard_skills:
             kw_lower = kw.lower()
-            if kw_lower in current_lower:
-                continue
-            inserted = self._try_insert_sub_skill(current_skills, kw)
-            if not inserted:
-                current_skills.append(kw)
-                self.changes_log.append(f"Added '{kw}' to Core Competencies")
-            else:
-                self.changes_log.append(f"Inserted '{kw}' into existing competency")
-            current_lower.add(kw_lower)
-            info["matched"] = True
+            if kw_lower not in seen_lower:
+                all_candidates.append((kw, importance, "jd"))
+
+        # Original skills — check against ALL JD keywords (matched + missing)
+        # to determine if they're JD-relevant and should be kept
+        all_jd_kw_names = set()
+        if all_jd_keywords:
+            for kw, info in all_jd_keywords.items():
+                if info["category"] == "hard_skills":
+                    all_jd_kw_names.add(kw.lower())
+        for orig in original_skills:
+            base = orig.split("(")[0].strip().lower()
+            if base not in seen_lower and orig.lower() not in seen_lower:
+                # Very high importance if already matched in JD (removing would lose score)
+                if base in all_jd_kw_names:
+                    importance = 5.0
+                else:
+                    importance = 1.0  # Not in JD — lowest priority
+                all_candidates.append((orig, importance, "original"))
+
+        # Sort all by importance descending
+        all_candidates.sort(key=lambda x: x[1], reverse=True)
+        for kw, imp, src in all_candidates:
+            kw_lower = kw.lower()
+            base = kw.split("(")[0].strip().lower()
+            if base not in seen_lower and kw_lower not in seen_lower:
+                candidates.append((kw, imp, src))
+                seen_lower.add(base)
+                seen_lower.add(kw_lower)
+
+        # --- Step 3: Pick top 6 from candidates to fill remaining slots ---
+        remaining_slots = MAX_SKILLS - len(staples)
+        selected = candidates[:remaining_slots]
+
+        # --- Step 4: Assemble final skills list ---
+        final_skills = list(staples)
+        for skill, _, _ in selected:
+            final_skills.append(skill)
+
+        # Track which original skills were displaced (for offloading)
+        final_lower = set()
+        for s in final_skills:
+            final_lower.add(s.lower())
+            base = s.split("(")[0].strip().lower()
+            final_lower.add(base)
+            paren = re.search(r"\(([^)]+)\)", s)
+            if paren:
+                for item in paren.group(1).split(","):
+                    final_lower.add(item.strip().lower())
+
+        displaced = []
+        for orig in original_skills:
+            orig_base = orig.split("(")[0].strip().lower()
+            if orig_base not in final_lower and orig.lower() not in final_lower:
+                displaced.append(orig)
+
+        # --- Step 5: Apply ---
+        resume["profile"]["core_competencies"] = final_skills[:MAX_SKILLS]
+
+        # Mark JD skills as matched
+        for kw, info in missing:
+            if kw.lower() in final_lower or kw.split("(")[0].strip().lower() in final_lower:
+                if info["category"] == "hard_skills":
+                    info["matched"] = True
+
+        # Store displaced skills for later offloading into bullets
+        self._displaced_skills = displaced
+
+        # Log changes
+        added = [s for s, _, src in selected if src == "jd"]
+        if added:
+            self.changes_log.append(
+                f"Curated 9 Core Competencies: kept staples (SQL, {staples[1]}, {staples[2]}), "
+                f"added {', '.join(added)}"
+            )
+        if displaced:
+            self.changes_log.append(
+                f"Displaced from skills (will offload to bullets): {', '.join(displaced)}"
+            )
 
     def _try_insert_sub_skill(self, skills, keyword):
         """Try to add a sub-skill inside parentheses of an existing skill."""

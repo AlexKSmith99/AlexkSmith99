@@ -19,6 +19,39 @@ from docx.oxml.ns import qn
 _TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "Alexander-Smith-2025-ResumeK-edit (2).docx"
 
 
+def _shrink_bullets(doc):
+    """
+    Reduce bullet character size by half in the numbering definitions.
+    The bullet ● inherits text size (10.5pt = 21 half-points).
+    Setting it to ~5pt (10 half-points) makes it proportionally smaller.
+    """
+    from lxml import etree
+    try:
+        numbering_part = doc.part.numbering_part
+        if not numbering_part:
+            return
+        for abstractNum in numbering_part._element.findall(qn('w:abstractNum')):
+            for lvl in abstractNum.findall(qn('w:lvl')):
+                ilvl = lvl.get(qn('w:ilvl'))
+                if ilvl != '0':
+                    continue
+                # Get or create rPr (run properties for the bullet character)
+                rPr = lvl.find(qn('w:rPr'))
+                if rPr is None:
+                    rPr = etree.SubElement(lvl, qn('w:rPr'))
+                # Set bullet font size to ~5pt (10 half-points)
+                sz = rPr.find(qn('w:sz'))
+                if sz is None:
+                    sz = etree.SubElement(rPr, qn('w:sz'))
+                sz.set(qn('w:val'), '10')
+                szCs = rPr.find(qn('w:szCs'))
+                if szCs is None:
+                    szCs = etree.SubElement(rPr, qn('w:szCs'))
+                szCs.set(qn('w:val'), '10')
+    except Exception:
+        pass
+
+
 def _find_paragraph_index(doc, text_fragment):
     """Find the index of the paragraph containing a text fragment."""
     for i, p in enumerate(doc.paragraphs):
@@ -71,6 +104,9 @@ def generate_resume_from_template(resume_data, output_path):
         )
 
     doc = Document(str(_TEMPLATE_PATH))
+
+    # --- 0. Reduce bullet size by half ---
+    _shrink_bullets(doc)
 
     # --- 1. Profile title (paragraph 7) ---
     title_idx = _find_paragraph_index(doc, "Data Analyst")
