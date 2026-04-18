@@ -30,14 +30,21 @@ CRITICAL RULES:
 2. PRESERVE the core action and outcome of each bullet
 3. Keep bullets approximately the same length (no longer than 130% of the original)
 4. Only add keywords that fit naturally in context — skip any that would sound forced or fabricated
-5. NEVER invent new accomplishments, tools, or metrics that aren't hinted at in the original
+5. NEVER invent new accomplishments, tools, or metrics that aren't in the original
 6. Use strong action verbs and professional, active-voice language
 7. Maintain ATS-readability (no fancy formatting, just clean prose)
 8. When a keyword is a tool/technology, integrate it where it makes contextual sense (e.g., alongside other tools used)
 9. When a keyword is a soft skill or concept, weave it into the description of how the work was done
 10. Output ONLY the rewritten text — no preamble, no explanations, no quotation marks, no bullet markers
 
-You are writing for a data analyst with experience at Healthfirst (health insurance), Canon USA (cameras/consumer electronics), and Razor USA (electric scooters)."""
+DOMAIN/INDUSTRY RULES — VERY IMPORTANT:
+11. NEVER claim the candidate has experience in a domain or industry they haven't actually worked in
+12. The candidate's ACTUAL industry experience is ONLY: healthcare/health insurance (Healthfirst), consumer electronics/cameras (Canon USA), and electric scooters/manufacturing (Razor USA)
+13. The candidate's ACTUAL functional domains are: data analytics, data science, sales analytics, marketing analytics, business intelligence, product analytics, customer analytics, B2C, DTC, retail, manufacturing, healthcare, insights, strategy
+14. If a JD keyword is an industry the candidate has NOT worked in (e.g., fintech, SaaS, banking, B2B), do NOT write "experience in fintech" or "proven track record in fintech" — instead SKIP that keyword or use it only if it appears as a job requirement you're matching TO (not claiming you have)
+15. You may reference that the candidate is seeking to apply their skills in a new industry, but NEVER claim existing experience in an industry they haven't worked in
+
+You are writing for a data analyst with experience at Healthfirst (health insurance, healthcare), Canon USA (consumer electronics, cameras, B2C, DTC, retail), and Razor USA (electric scooters, manufacturing, B2C, DTC, e-commerce)."""
 
 
 class LLMRewriter:

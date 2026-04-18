@@ -96,30 +96,51 @@ def generate_resume_from_template(resume_data, output_path):
         ]
         row = table.rows[0]
         for col_idx, col_skills in enumerate(columns):
+            if col_idx >= len(row.cells):
+                break
             cell = row.cells[col_idx]
-            # Clear existing paragraphs
-            for p in cell.paragraphs:
-                for run in p.runs:
-                    run.text = ""
-            # Set new skills, one per line
+            existing_paras = list(cell.paragraphs)
+
+            # Save a reference paragraph XML to clone for new entries
+            # (preserves bullet formatting, font, spacing)
+            ref_para_xml = None
+            if existing_paras:
+                import copy as _copy
+                ref_para_xml = _copy.deepcopy(existing_paras[0]._element)
+
+            # Clear ALL existing paragraphs from the cell
+            for p in existing_paras:
+                p._element.getparent().remove(p._element)
+
+            # Add skills as new paragraphs cloned from the reference
+            from lxml import etree
             for skill_idx, skill in enumerate(col_skills):
-                if skill_idx == 0:
-                    # Use existing first paragraph
-                    if cell.paragraphs[0].runs:
-                        cell.paragraphs[0].runs[0].text = skill
-                    else:
-                        cell.paragraphs[0].text = skill
+                if ref_para_xml is not None:
+                    import copy as _copy
+                    new_para_xml = _copy.deepcopy(ref_para_xml)
+                    # Clear existing text runs and set new text
+                    for r_elem in new_para_xml.findall(qn('w:r')):
+                        new_para_xml.remove(r_elem)
+                    # Create a new run with the skill text
+                    run_xml = etree.SubElement(new_para_xml, qn('w:r'))
+                    # Copy run properties from reference
+                    ref_runs = ref_para_xml.findall(qn('w:r'))
+                    if ref_runs:
+                        ref_rPr = ref_runs[0].find(qn('w:rPr'))
+                        if ref_rPr is not None:
+                            run_xml.insert(0, _copy.deepcopy(ref_rPr))
+                    # Set the text
+                    text_xml = etree.SubElement(run_xml, qn('w:t'))
+                    text_xml.text = skill
+                    text_xml.set(qn('xml:space'), 'preserve')
+                    # Append to cell
+                    cell._element.append(new_para_xml)
                 else:
-                    # Add new paragraph copying format from first
-                    new_para = cell.add_paragraph()
-                    # Copy formatting from first paragraph
-                    src_para = cell.paragraphs[0]
-                    if src_para.runs:
-                        run = new_para.add_run(skill)
-                        src_font = src_para.runs[0].font
-                        run.font.size = src_font.size
-                        run.font.bold = src_font.bold
-                        run.font.name = src_font.name
+                    # Fallback: simple paragraph (no bullet formatting)
+                    p = cell.add_paragraph(skill)
+                    if p.runs:
+                        p.runs[0].font.size = 133350  # 10.5pt
+                        p.runs[0].font.name = "Calibri"
 
     # --- 4. Experience sections ---
     _update_experience(doc, resume_data["experience"])
