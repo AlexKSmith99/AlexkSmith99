@@ -1,0 +1,33 @@
+Data Analyst III
+Brex
+
+About Brex:
+Brex is the AI-powered spend platform. We help companies spend with confidence with integrated corporate cards, banking, and global payments, plus intuitive software for travel and expenses. Tens of thousands of companies from startups to enterprises — including DoorDash, Flexport, and Compass — use Brex to proactively control spend, reduce costs, and increase efficiency on a global scale.
+
+What you'll do:
+As a Data Analyst III, you will be an embedded analytics partner within our Revenue organization, helping drive data-informed decisions across Sales, Partnerships, and Go-to-Market teams. You will build dashboards, develop data models, and deliver actionable insights that directly influence business strategy and growth.
+
+Responsibilities:
+- Partner with Sales, Partnerships, and Operations leadership to define KPIs, build reporting frameworks, and surface actionable insights
+- Design and build Looker dashboards and self-serve reporting tools that enable stakeholders to monitor business health and make data-driven decisions
+- Develop and maintain SQL-based data models in dbt, ensuring data quality, consistency, and documentation across the analytics layer
+- Conduct deep-dive analyses on sales performance, pipeline health, conversion rates, and customer segmentation to inform strategic initiatives
+- Collaborate cross-functionally with Data Engineering, Product, and Finance teams to improve data infrastructure and ensure alignment on key metrics
+- Present findings and recommendations to senior leadership, translating complex data into clear, compelling narratives
+
+What you have:
+- 5+ years of experience in data analytics, business intelligence, or a related quantitative role
+- 3+ years of experience partnering directly with Sales, Operations, Product, or equivalent business teams as an embedded analytics partner
+- Advanced SQL proficiency, including CTEs, window functions, performance optimization, and working across complex data models
+- Proficiency in Python for data analysis, automation, and modeling (Pandas, NumPy, scikit-learn, or similar)
+- Experience with cloud data warehouses, particularly Snowflake (BigQuery and Databricks also valued)
+- Hands-on experience with BI and data visualization tools (Looker, Tableau, Hex, or similar)
+- Strong communication and presentation skills, with the ability to translate data into business recommendations
+- Experience with dbt for data transformation and modeling
+- Familiarity with Git and version control best practices
+
+Nice to have:
+- Experience in fintech, SaaS, or B2B environments
+- Familiarity with Salesforce data and CRM analytics
+- Experience with statistical modeling, A/B testing, or predictive analytics
+- Knowledge of Airflow or similar orchestration tools
